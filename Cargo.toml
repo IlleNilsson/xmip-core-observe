@@ -2,12 +2,12 @@
 [workspace]
 
 [package]
-name = "xmip-observe"
+name = "xmip-core-observe"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/IlleNilsson/xmip-observe"
+repository = "https://github.com/IlleNilsson/xmip-core-observe"
 description = "Near-real-time operational observation contracts for Xmip."
 
 [dependencies]
-xmip-core = { git = "https://github.com/IlleNilsson/xmip-core", rev = "9adfd1eb4a6a3b5a6b0b6ea9b3a1fb288b41c8fc" }
+xmip-core = { git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
