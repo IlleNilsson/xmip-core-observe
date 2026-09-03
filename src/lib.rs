@@ -1,26 +1,15 @@
 #![forbid(unsafe_code)]
 
-use xmip_core::{ArtifactId, ClusterId, NodeId};
+//! Observation: what is happening now, and what is unhealthy.
+//!
+//! observability-model.md section 6. Near-real-time and never synchronous —
+//! Receive, Process and Send must never wait for it. What they write lands in
+//! a [`Snapshot`], and the operator boundary in `xmip_operate.h` reads that
+//! snapshot and nothing else. ADR-0027 clause 6.
+//!
+//! `Grey` and `Black` left on 2026-09-04. No document defined them; section 6
+//! has three states and ADR-0027 adds a fourth that only a surface may say.
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OperationalState {
-    Green,
-    Yellow,
-    Red,
-    Grey,
-    Black,
-}
+pub mod snapshot;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Observation {
-    pub state: OperationalState,
-    pub artifact_id: Option<ArtifactId>,
-    pub node_id: Option<NodeId>,
-    pub cluster_id: Option<ClusterId>,
-    pub summary: String,
-    pub timestamp_unix_nanos: i128,
-}
-
-pub trait ObservationSink: Send + Sync {
-    fn publish(&self, observation: Observation);
-}
+pub use snapshot::{Count, Counted, Health, HealthRecord, Snapshot};
