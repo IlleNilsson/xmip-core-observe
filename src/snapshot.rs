@@ -100,6 +100,18 @@ impl Snapshot {
             .insert((count.scope.clone(), count.counted), count);
     }
 
+    /// Every health record in the snapshot, for a caller that retains history
+    /// rather than reading one scope. Order is by scope; the reader does not
+    /// depend on it.
+    pub fn health_records(&self) -> impl Iterator<Item = &HealthRecord> {
+        self.health.values()
+    }
+
+    /// Every count in the snapshot, for the same reason.
+    pub fn all_counts(&self) -> impl Iterator<Item = &Count> {
+        self.counts.values()
+    }
+
     /// Pause everything at and beneath a scope. Each affected record is set to
     /// yellow at [`PAUSED_SEVERITY`], its prior state kept for resume, and its
     /// counts stop. `who` names the operator, for the evidence line. Returns
