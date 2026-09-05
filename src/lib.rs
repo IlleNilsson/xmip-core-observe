@@ -10,6 +10,8 @@
 //! `Grey` and `Black` left on 2026-09-04. No document defined them; section 6
 //! has three states and ADR-0027 adds a fourth that only a surface may say.
 
+pub mod history;
 pub mod snapshot;
 
+pub use history::{DEFAULT_CAPACITY, History};
 pub use snapshot::{Count, Counted, Health, HealthRecord, Snapshot};
