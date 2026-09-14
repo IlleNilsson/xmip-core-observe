@@ -12,6 +12,8 @@
 
 use std::collections::VecDeque;
 
+use crate::scope::beneath;
+
 /// Which of the three units an item is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ItemKind {
@@ -47,9 +49,10 @@ pub struct Item {
     pub observed_unix_nanos: i64,
 }
 
-/// The default number of items kept: enough to see what just flowed without
-/// unbounded growth.
-pub const DEFAULT_CAPACITY: usize = 512;
+/// The default number of items an [`Activity`] keeps: enough to see what just
+/// flowed without unbounded growth. Named for what it bounds, because
+/// `history.rs` has a default of its own and the two are not one number.
+pub const DEFAULT_ITEM_CAPACITY: usize = 512;
 
 /// A bounded ring of the most recent observed items.
 pub struct Activity {
@@ -104,19 +107,8 @@ impl Activity {
 
 impl Default for Activity {
     fn default() -> Self {
-        Self::with_capacity(DEFAULT_CAPACITY)
+        Self::with_capacity(DEFAULT_ITEM_CAPACITY)
     }
-}
-
-/// A candidate scope is at or beneath a query scope when the query's segments
-/// are a prefix of the candidate's. An empty query is above everything.
-fn beneath(candidate: &str, scope: &str) -> bool {
-    let trimmed = scope.trim_end_matches('/');
-
-    trimmed.is_empty()
-        || candidate == trimmed
-        || (candidate.starts_with(trimmed)
-            && candidate.as_bytes().get(trimmed.len()) == Some(&b'/'))
 }
 
 #[cfg(test)]

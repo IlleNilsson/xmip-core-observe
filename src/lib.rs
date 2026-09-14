@@ -13,8 +13,9 @@
 
 pub mod activity;
 pub mod history;
+pub mod scope;
 pub mod snapshot;
 
-pub use activity::{Activity, Item, ItemKind};
-pub use history::{DEFAULT_CAPACITY, History};
+pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
+pub use history::{DEFAULT_SERIES_CAPACITY, History};
 pub use snapshot::{Count, Counted, Health, HealthRecord, Snapshot};

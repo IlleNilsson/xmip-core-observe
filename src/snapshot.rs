@@ -5,13 +5,13 @@
 //! across it asks the hot path. This is the published thing. Receive, Process
 //! and Send write into it asynchronously; a surface reads whatever is here.
 //!
-//! Scope is an Xmip URI path over the execution tree, clause 4. A record at
-//! `xmip:///edge-01/transport/ftp` sits beneath `xmip:///edge-01/transport`
-//! and beneath `xmip:///edge-01`, so asking for a node gets everything the
-//! node holds. That prefix rule is the whole aggregation model: health up the
-//! tree is the worst beneath, and a count up the tree is the sum beneath.
+//! Scope is an Xmip URI path over the execution tree, clause 4, and
+//! [`beneath`] in `scope.rs` is the prefix rule: health up the tree is the
+//! worst beneath, and a count up the tree is the sum beneath.
 
 use std::collections::BTreeMap;
+
+use crate::scope::beneath;
 
 /// The mood of a scope — observability-model.md section 6. A mood, not a colour:
 /// this names what a human gets out of a thread, process, node or cluster, and
@@ -273,18 +273,6 @@ impl Snapshot {
                 .unwrap_or(first.observed_unix_nanos),
         })
     }
-}
-
-/// Whether `candidate` is `scope` or sits beneath it in the tree. A prefix of
-/// characters is not a prefix of path segments: `xmip:///ab` is not beneath
-/// `xmip:///a`.
-fn beneath(candidate: &str, scope: &str) -> bool {
-    let scope = scope.trim_end_matches('/');
-
-    candidate == scope
-        || candidate
-            .strip_prefix(scope)
-            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 #[cfg(test)]

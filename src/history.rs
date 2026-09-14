@@ -15,9 +15,11 @@ use std::collections::{BTreeMap, VecDeque};
 
 use crate::snapshot::{Count, Counted, HealthRecord, Snapshot};
 
-/// The default points kept per series: enough to watch a shift at one point a
-/// second without unbounded growth.
-pub const DEFAULT_CAPACITY: usize = 4096;
+/// The default points a [`History`] keeps per series: enough to watch a shift
+/// at one point a second without unbounded growth. Named for what it bounds,
+/// because `activity.rs` has a default of its own and the two are not one
+/// number.
+pub const DEFAULT_SERIES_CAPACITY: usize = 4096;
 
 /// A bounded series of observation over time, per scope.
 pub struct History {
@@ -100,7 +102,7 @@ impl History {
 
 impl Default for History {
     fn default() -> Self {
-        Self::with_capacity(DEFAULT_CAPACITY)
+        Self::with_capacity(DEFAULT_SERIES_CAPACITY)
     }
 }
 
