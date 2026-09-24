@@ -2,13 +2,13 @@
 //! which of two records is the worse: observability-model.md section 6 and
 //! ADR-0041, once.
 //!
-//! Every word, color name and order a surface shows for a mood is decided
-//! here and nowhere else. The runtime's cdylib forwards each to a surface
-//! over `xmip_operate.h` section 7 (`xmip_health_word_v1`,
-//! `xmip_health_named_v1`, `xmip_health_color_v1`, `xmip_health_order_v1`),
-//! so `Xmip.Surface`, the PowerShell module and the GUI call these rather
-//! than keep a table of their own (ADR-0052, amendment 2026-09-24: one
-//! implementation, the surfaces call the runtime's exports).
+//! Every word, color name, rollup and order a surface shows for a mood is
+//! decided here and nowhere else. The runtime's cdylib forwards each to a
+//! surface over `xmip_operate.h` section 7 (`xmip_health_word_v1`,
+//! `xmip_health_named_v1`, `xmip_health_color_v1`, `xmip_health_rolled_v1`,
+//! `xmip_health_order_v1`), so `Xmip.Surface`, the PowerShell module and the
+//! GUI call these rather than keep a table of their own (ADR-0052, amendment
+//! 2026-09-24: one implementation, the surfaces call the runtime's exports).
 
 use std::cmp::Ordering;
 
@@ -79,6 +79,19 @@ impl Health {
     #[must_use]
     pub fn named(word: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|health| health.word() == word)
+    }
+
+    /// What a parent shows when this is the worst mood beneath it (ADR-0041):
+    /// `Fine` when it is `Fine`, and `Holding` the moment it is anything
+    /// else. A leaf's mood does not propagate; the leaf that owns the trouble
+    /// keeps its own, and an operator drills down through the `Holding`
+    /// scopes to it.
+    #[must_use]
+    pub const fn rolled(self) -> Self {
+        match self {
+            Health::Fine => Health::Fine,
+            _ => Health::Holding,
+        }
     }
 
     /// The name of the color a surface paints the mood in (ADR-0041,
@@ -191,6 +204,22 @@ mod tests {
         assert_eq!(
             Health::ALL.map(Health::color),
             ["green", "slate", "blue", "yellow", "burnt", "red", "orange"]
+        );
+    }
+
+    #[test]
+    fn a_parent_is_fine_or_holding_and_nothing_else() {
+        assert_eq!(
+            Health::ALL.map(Health::rolled),
+            [
+                Health::Fine,
+                Health::Holding,
+                Health::Holding,
+                Health::Holding,
+                Health::Holding,
+                Health::Holding,
+                Health::Holding
+            ]
         );
     }
 

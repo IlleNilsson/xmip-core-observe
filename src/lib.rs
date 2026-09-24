@@ -12,13 +12,26 @@
 //! `Holding` the rollup only a parent shows (ADR-0041).
 
 pub mod activity;
+pub mod capability;
+pub mod counted;
+pub mod curve;
 pub mod health;
 pub mod history;
+pub mod publication;
+pub mod recent;
+pub mod run;
 pub mod scope;
 pub mod snapshot;
+pub mod topology;
 
 pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
+pub use counted::Counted;
+pub use curve::Curve;
 pub use health::{Health, Standing};
 pub use history::{DEFAULT_SERIES_CAPACITY, History};
+pub use publication::Publication;
+pub use recent::Recent;
+pub use run::{Run, RunList};
 pub use scope::Scope;
-pub use snapshot::{Count, Counted, HealthRecord, Snapshot};
+pub use snapshot::{Count, HealthRecord, Snapshot};
+pub use topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};

@@ -11,21 +11,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::counted::Counted;
 use crate::health::{Health, Standing};
 use crate::scope::Scope;
-
-/// What a count counts. Never a bare number — ADR-0027 clause 5.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Counted {
-    Streams,
-    Messages,
-    Journeys,
-    Bytes,
-    /// Delivery or processing attempts awaiting another try.
-    Retrying,
-    /// Delivery or processing outcomes that ended unsuccessfully.
-    Failed,
-}
 
 /// The severity a paused scope publishes. A category, not a measurement: a
 /// deliberate stop is a correctable state, and it stays that however long it
@@ -214,10 +202,10 @@ impl Snapshot {
     #[must_use]
     pub fn worst(&self, scope: &str) -> Option<Health> {
         let record = self.health(scope).into_iter().next()?;
-        if Scope::new(&record.scope) != Scope::new(scope) && record.health != Health::Fine {
-            Some(Health::Holding)
-        } else {
+        if Scope::new(&record.scope) == Scope::new(scope) {
             Some(record.health)
+        } else {
+            Some(record.health.rolled())
         }
     }
 
