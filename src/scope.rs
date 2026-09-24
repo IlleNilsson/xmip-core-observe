@@ -10,6 +10,12 @@
 //! `activity.rs` each carried a predicate of their own until 2026-09-14, and
 //! until 2026-09-24 this crate compared the whole text while `Xmip.Surface`'s
 //! `ScopeTree` compared the path (open problem 25, row k).
+//!
+//! It is written once, here. The runtime's cdylib forwards it to the surfaces
+//! over `xmip_operate.h` section 7 — `xmip_scope_contains_v1` and
+//! `xmip_scope_parts_v1` — and `ScopeTree` in `Xmip.Surface` calls those
+//! rather than keeping a writing of its own (ADR-0052, amendment 2026-09-24:
+//! one implementation, the surfaces call the runtime's exports).
 
 /// The scheme every scope carries, lower-case: `XMIP:///C1` is a path, not a
 /// scope, as `ScopeTree` and `ScopePattern` read it (ADR-0052, amendment
@@ -21,12 +27,6 @@ const SCHEME: &str = "xmip://";
 /// Borrowed from the text it was read from. Two scopes are equal when they
 /// name the same path: `xmip://edge-01/n/receive` and `xmip:///n/receive/`
 /// are one place.
-///
-/// **The rule has two writers, on purpose.** `ScopeTree` in `Xmip.Surface`
-/// writes it again in C#, because a surface loads no Rust library (the owner,
-/// 2026-09-24; ADR-0052, amendment of that date). Both are held to one set
-/// of cases, `src/scope-vector.toml` beside this file, which a test on each
-/// side reads: change a case there first, then both writers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Scope<'a> {
     /// The path after the scheme and the authority, with no slash at either
@@ -67,6 +67,14 @@ impl<'a> Scope<'a> {
         self.path.is_empty()
     }
 
+    /// The segments of the path, top first: `xmip:///edge-01/receive/orders`
+    /// is `edge-01`, `receive`, `orders`. An empty segment — `a//b` — is no
+    /// segment, and the root has none. Borrowed from the text the scope was
+    /// read from.
+    pub fn segments(self) -> impl Iterator<Item = &'a str> {
+        self.path.split('/').filter(|segment| !segment.is_empty())
+    }
+
     /// Whether `other` is this scope or sits beneath it in the tree.
     ///
     /// A prefix of segments, not of characters: `xmip:///ab` is not beneath
@@ -90,35 +98,8 @@ mod tests {
         Scope::new(scope).contains(Scope::new(candidate))
     }
 
-    /// Every case in `scope-vector.toml`, the file `ScopeTreeTest` in
-    /// `Xmip.Surface.Test` reads too.
-    #[test]
-    fn every_shared_case_holds() {
-        let vector: toml::Table =
-            toml::from_str(include_str!("scope-vector.toml")).expect("the vector parses");
-        let cases = vector["case"].as_array().expect("a [[case]] array");
-        assert!(!cases.is_empty());
-
-        for case in cases {
-            let text = |key: &str| case[key].as_str().expect(key);
-            let (why, scope) = (text("why"), Scope::new(text("scope")));
-
-            assert_eq!(
-                scope.contains(Scope::new(text("candidate"))),
-                case["contains"].as_bool().expect("contains"),
-                "{why}"
-            );
-            if let Some(path) = case.get("path") {
-                assert_eq!(scope.path(), path.as_str().expect("path"), "{why}");
-            }
-            if let Some(is_root) = case.get("is_root") {
-                assert_eq!(
-                    scope.is_root(),
-                    is_root.as_bool().expect("is_root"),
-                    "{why}"
-                );
-            }
-        }
+    fn parts(scope: &str) -> Vec<&str> {
+        Scope::new(scope).segments().collect()
     }
 
     #[test]
@@ -127,11 +108,13 @@ mod tests {
         assert!(beneath("xmip:///n/receive/a", "xmip:///n/receive"));
         assert!(beneath("xmip:///n/receive/a", "xmip:///n"));
         assert!(beneath("xmip:///n/receive/a", "xmip:///"));
+        assert!(!beneath("xmip:///n", "xmip:///n/receive"), "never above");
     }
 
     #[test]
     fn segments_are_the_unit_not_characters() {
         assert!(!beneath("xmip:///ab", "xmip:///a"));
+        assert!(!beneath("xmip:///nx", "xmip:///n"));
         assert!(!beneath("xmip:///n/receive-b", "xmip:///n/receive"));
         assert!(!beneath("xmip:///n", "xmip:///n/receive"));
     }
@@ -141,13 +124,22 @@ mod tests {
         assert!(beneath("xmip:///n/receive/a", "xmip:///n/receive/"));
         assert!(beneath("xmip:///n/receive", "xmip:///n/receive/"));
         assert!(beneath("xmip:///n/receive/", "xmip:///n/receive"));
+        assert!(beneath("xmip:///n/receive/a", "/n/receive/"));
+        assert_eq!(Scope::new("/n/receive/").path(), "n/receive");
     }
 
     #[test]
-    fn an_empty_scope_is_above_everything() {
-        assert!(beneath("xmip:///n/receive/a", ""));
-        assert!(beneath("xmip:///n", "/"));
-        assert!(Scope::new("").is_root());
+    fn the_root_has_four_spellings_and_contains_everything() {
+        for root in ["", "/", "xmip://", "xmip:///"] {
+            assert!(Scope::new(root).is_root(), "{root:?} is the root");
+            assert_eq!(Scope::new(root).path(), "");
+            assert!(beneath("xmip:///n/receive/a", root));
+        }
+        assert!(beneath("", ""), "the root contains the root");
+        assert!(
+            !beneath("", "xmip:///n"),
+            "a node does not contain the root"
+        );
     }
 
     #[test]
@@ -156,6 +148,7 @@ mod tests {
         // is the path. The text comparison this replaced said no to both.
         assert!(beneath("xmip://edge-01/n/receive/a", "xmip:///n"));
         assert!(beneath("xmip:///n/receive/a", "xmip://ops@edge-01:7400/n"));
+        assert_eq!(Scope::new("xmip://ops@edge-01:7400/n").path(), "n");
         assert_eq!(Scope::new("xmip://edge-01/n"), Scope::new("xmip:///n/"));
         assert!(Scope::new("xmip://edge-01").is_root());
     }
@@ -164,7 +157,48 @@ mod tests {
     fn text_without_the_scheme_is_a_path() {
         assert!(beneath("xmip:///n/receive/a", "n/receive"));
         assert!(beneath("n/receive/a", "xmip:///n"));
-        // The scheme is lower-case; anything else is the start of a path.
+        assert_eq!(Scope::new("n/receive").path(), "n/receive");
+    }
+
+    #[test]
+    fn the_scheme_is_lower_case_and_segments_compare_case_sensitively() {
+        // An upper-case scheme is the start of a path, on both sides alike.
         assert_eq!(Scope::new("XMIP:///C1").path(), "XMIP:///C1");
+        assert!(!beneath("XMIP:///C1", "xmip:///C1"));
+        assert!(beneath("XMIP:///C1/node", "XMIP:///C1"));
+        assert!(!beneath("xmip:///N/receive", "xmip:///n"));
+    }
+
+    #[test]
+    fn a_query_and_a_fragment_are_part_of_the_path_today() {
+        // ADR-0027 clause 3 puts a Party filter in the query, and no scope the
+        // estate publishes carries one yet; this is the behavior until then.
+        assert!(beneath(
+            "xmip:///n/receive/a?party=partner-x",
+            "xmip:///n/receive"
+        ));
+        assert_eq!(
+            Scope::new("xmip:///n/receive?party=partner-x").path(),
+            "n/receive?party=partner-x"
+        );
+        assert!(!beneath("xmip:///n/receive/a", "xmip:///n/receive?party=x"));
+        assert!(!beneath("xmip:///n", "xmip:///n#top"));
+    }
+
+    #[test]
+    fn the_segments_are_the_path_split_top_first() {
+        assert_eq!(
+            parts("xmip:///edge-01/receive/orders"),
+            ["edge-01", "receive", "orders"]
+        );
+        assert_eq!(
+            parts("xmip://lab:9000/edge-01/receive/"),
+            ["edge-01", "receive"]
+        );
+        assert_eq!(parts("edge-01/receive"), ["edge-01", "receive"]);
+        assert_eq!(parts("xmip:///a//b"), ["a", "b"]);
+        assert!(parts("xmip:///").is_empty());
+        assert!(parts("").is_empty());
+        assert!(parts("xmip://edge-01").is_empty());
     }
 }

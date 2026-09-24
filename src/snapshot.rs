@@ -11,38 +11,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::health::{Health, Standing};
 use crate::scope::Scope;
-
-/// The mood of a scope — observability-model.md section 6. A mood, not a colour:
-/// this names what a human gets out of a thread, process, node or cluster, and
-/// a surface renders it however it likes (the GUI paints it). It is about the
-/// resource under load, not the machine: it tells an operator whether results
-/// are flowing and, when they are not, what to do — change the load, replace the
-/// hardware, fix the one thing that is stuck (ADR-0041).
-///
-/// The **leaf** moods, in worsening order: `Fine` (results flowing), `Paused` (a
-/// deliberate hold — an operator is working on it), `Working` (handling the
-/// load), `Stressed` (strained — change the load), `Exhausted` (spent — replace
-/// the hardware), `Done` (blocked or failed — the pain, a cert to renew, a
-/// password, a missing folder).
-///
-/// `Holding` is the **rollup** mood, not a leaf's: in a perfect world everything
-/// is `Fine`; the moment anything below is not, the parent is displeased and
-/// reports `Holding` — drill in. So a parent is `Fine` or `Holding`, and a leaf
-/// carries the real mood. `Fine` up the tree means every leaf beneath is `Fine`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Health {
-    Fine,
-    /// A deliberate hold — an operator is working on it. Not a fault and not
-    /// strain; it yields nothing because someone paused it on purpose.
-    Paused,
-    Working,
-    Stressed,
-    Exhausted,
-    Done,
-    /// Rollup only — a parent with something not-`Fine` beneath it.
-    Holding,
-}
 
 /// What a count counts. Never a bare number — ADR-0027 clause 5.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,6 +44,18 @@ pub struct HealthRecord {
     pub severity: u8,
     pub evidence: String,
     pub observed_unix_nanos: i64,
+}
+
+impl HealthRecord {
+    /// Where this record stands in the worst-first order.
+    #[must_use]
+    pub fn standing(&self) -> Standing<'_> {
+        Standing {
+            health: self.health,
+            severity: self.severity,
+            scope: &self.scope,
+        }
+    }
 }
 
 /// One count over a window, and when it was taken.
@@ -215,12 +197,7 @@ impl Snapshot {
             .cloned()
             .collect();
 
-        found.sort_by(|a, b| {
-            b.health
-                .cmp(&a.health)
-                .then(b.severity.cmp(&a.severity))
-                .then(a.scope.cmp(&b.scope))
-        });
+        found.sort_by(|a, b| a.standing().cmp(&b.standing()));
 
         found
     }

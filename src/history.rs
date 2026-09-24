@@ -116,7 +116,7 @@ fn push<T>(series: &mut VecDeque<T>, point: T, capacity: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::Health;
+    use crate::health::Health;
 
     fn health(scope: &str, health: Health, now: i64) -> HealthRecord {
         HealthRecord {

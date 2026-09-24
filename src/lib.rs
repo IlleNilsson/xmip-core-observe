@@ -12,11 +12,13 @@
 //! `Holding` the rollup only a parent shows (ADR-0041).
 
 pub mod activity;
+pub mod health;
 pub mod history;
 pub mod scope;
 pub mod snapshot;
 
 pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
+pub use health::{Health, Standing};
 pub use history::{DEFAULT_SERIES_CAPACITY, History};
 pub use scope::Scope;
-pub use snapshot::{Count, Counted, Health, HealthRecord, Snapshot};
+pub use snapshot::{Count, Counted, HealthRecord, Snapshot};
