@@ -6,12 +6,12 @@
 //! and Send write into it asynchronously; a surface reads whatever is here.
 //!
 //! Scope is an Xmip URI path over the execution tree, clause 4, and
-//! [`beneath`] in `scope.rs` is the prefix rule: health up the tree is the
-//! worst beneath, and a count up the tree is the sum beneath.
+//! [`Scope::contains`] is the prefix rule: health up the tree is the worst
+//! beneath, and a count up the tree is the sum beneath.
 
 use std::collections::BTreeMap;
 
-use crate::scope::beneath;
+use crate::scope::Scope;
 
 /// The mood of a scope — observability-model.md section 6. A mood, not a colour:
 /// this names what a human gets out of a thread, process, node or cluster, and
@@ -143,10 +143,11 @@ impl Snapshot {
     /// `who` names the operator, for the evidence line. Returns
     /// how many scopes it paused — zero when the scope names nothing.
     pub fn pause(&mut self, scope: &str, who: &str, now: i64) -> usize {
+        let scope = Scope::new(scope);
         let targets: Vec<String> = self
             .health
             .keys()
-            .filter(|recorded| beneath(recorded, scope))
+            .filter(|recorded| scope.contains(Scope::new(recorded)))
             .cloned()
             .collect();
 
@@ -175,10 +176,11 @@ impl Snapshot {
     /// Resume everything at and beneath a scope, putting back the state each
     /// had before it was paused. Returns how many scopes it resumed.
     pub fn resume(&mut self, scope: &str) -> usize {
+        let scope = Scope::new(scope);
         let targets: Vec<String> = self
             .paused
             .keys()
-            .filter(|recorded| beneath(recorded, scope))
+            .filter(|recorded| scope.contains(Scope::new(recorded)))
             .cloned()
             .collect();
 
@@ -194,7 +196,10 @@ impl Snapshot {
     /// Whether a scope is paused — itself or an ancestor of it.
     #[must_use]
     pub fn is_paused(&self, scope: &str) -> bool {
-        self.paused.keys().any(|paused| beneath(scope, paused))
+        let scope = Scope::new(scope);
+        self.paused
+            .keys()
+            .any(|paused| Scope::new(paused).contains(scope))
     }
 
     /// Health at and beneath a scope, worst first and, within a mood, most
@@ -202,10 +207,11 @@ impl Snapshot {
     /// operator can do something about is the first thing they see.
     #[must_use]
     pub fn health(&self, scope: &str) -> Vec<HealthRecord> {
+        let scope = Scope::new(scope);
         let mut found: Vec<HealthRecord> = self
             .health
             .values()
-            .filter(|record| beneath(&record.scope, scope))
+            .filter(|record| scope.contains(Scope::new(&record.scope)))
             .cloned()
             .collect();
 
@@ -231,7 +237,7 @@ impl Snapshot {
     #[must_use]
     pub fn worst(&self, scope: &str) -> Option<Health> {
         let record = self.health(scope).into_iter().next()?;
-        if record.scope != scope && record.health != Health::Fine {
+        if Scope::new(&record.scope) != Scope::new(scope) && record.health != Health::Fine {
             Some(Health::Holding)
         } else {
             Some(record.health)
@@ -244,10 +250,11 @@ impl Snapshot {
     /// recorded.
     #[must_use]
     pub fn measure(&self, scope: &str, counted: Counted) -> Option<Count> {
+        let within = Scope::new(scope);
         let parts: Vec<&Count> = self
             .counts
             .values()
-            .filter(|count| count.counted == counted && beneath(&count.scope, scope))
+            .filter(|count| count.counted == counted && within.contains(Scope::new(&count.scope)))
             .collect();
 
         let first = parts.first()?;
@@ -422,5 +429,19 @@ mod tests {
         snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, 0));
 
         assert_eq!(snapshot.worst("xmip:///n/receive/a"), Some(Health::Paused));
+    }
+
+    #[test]
+    fn a_scope_is_read_by_its_path_not_its_text() {
+        // Open problem 25, row k: the surfaces compare the path after the
+        // scheme and the authority, and the snapshot now does too.
+        let mut snapshot = Snapshot::new();
+        snapshot.record_health(health("xmip://edge-01/n/receive/a", Health::Done, 90));
+
+        assert_eq!(snapshot.health("xmip:///n").len(), 1);
+        assert_eq!(snapshot.worst("xmip:///n"), Some(Health::Holding));
+        assert_eq!(snapshot.worst("xmip:///n/receive/a/"), Some(Health::Done));
+        assert_eq!(snapshot.pause("n/receive", "ilian", 2_000), 1);
+        assert!(snapshot.is_paused("xmip:///n/receive/a"));
     }
 }

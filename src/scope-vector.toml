@@ -1,0 +1,192 @@
+# Scope containment, as cases: the one statement of the rule that both of its
+# writers are held to (ADR-0052, amendment 2026-09-24).
+#
+# The rule is written twice on purpose. `observe::Scope` in `scope.rs` is the
+# runtime's; `ScopeTree` in `Xmip.Surface` (xmip-core-abi) is the surfaces',
+# because a surface loads no Rust library (the owner, 2026-09-24). A test on
+# each side reads this file, so the two cannot drift: change the rule here
+# first, then in both writers.
+#
+# Each case: `scope` is the query, `candidate` the thing asked about, and
+# `contains` whether the candidate is the scope or sits beneath it. `path`,
+# where given, is the scope's path after the scheme and the authority with no
+# slash at either end, and `is_root`, where given, whether the scope is the
+# root. `why` is for the reader.
+
+[[case]]
+why = "a scope contains itself"
+scope = "xmip:///n/receive/a"
+candidate = "xmip:///n/receive/a"
+contains = true
+path = "n/receive/a"
+is_root = false
+
+[[case]]
+why = "and everything beneath it"
+scope = "xmip:///n"
+candidate = "xmip:///n/receive/a"
+contains = true
+
+[[case]]
+why = "never what is above it"
+scope = "xmip:///n/receive"
+candidate = "xmip:///n"
+contains = false
+
+[[case]]
+why = "a prefix of segments, not of characters"
+scope = "xmip:///n"
+candidate = "xmip:///nx"
+contains = false
+
+[[case]]
+why = "a prefix of segments, not of characters, deeper down"
+scope = "xmip:///n/receive"
+candidate = "xmip:///n/receive-b"
+contains = false
+
+[[case]]
+why = "the root contains everything"
+scope = "xmip:///"
+candidate = "xmip:///n/receive/a"
+contains = true
+path = ""
+is_root = true
+
+[[case]]
+why = "a scheme and nothing else is the root"
+scope = "xmip://"
+candidate = "xmip:///n"
+contains = true
+path = ""
+is_root = true
+
+[[case]]
+why = "empty text is the root: the boundary crosses a { NULL, 0 } scope as it"
+scope = ""
+candidate = "xmip:///n/receive/a"
+contains = true
+path = ""
+is_root = true
+
+[[case]]
+why = "a lone slash is the root"
+scope = "/"
+candidate = "xmip:///n"
+contains = true
+path = ""
+is_root = true
+
+[[case]]
+why = "the root contains the root"
+scope = ""
+candidate = ""
+contains = true
+
+[[case]]
+why = "a node does not contain the root"
+scope = "xmip:///n"
+candidate = ""
+contains = false
+
+[[case]]
+why = "the authority is not part of the tree: a host on the candidate"
+scope = "xmip:///n"
+candidate = "xmip://edge-01/n/receive/a"
+contains = true
+
+[[case]]
+why = "the authority is not part of the tree: userinfo, host and port on the scope"
+scope = "xmip://ops@edge-01:7400/n"
+candidate = "xmip:///n/receive/a"
+contains = true
+path = "n"
+is_root = false
+
+[[case]]
+why = "an authority and no path is the root"
+scope = "xmip://edge-01"
+candidate = "xmip:///n"
+contains = true
+path = ""
+is_root = true
+
+[[case]]
+why = "text without the scheme is a path"
+scope = "n/receive"
+candidate = "xmip:///n/receive/a"
+contains = true
+path = "n/receive"
+is_root = false
+
+[[case]]
+why = "a path without the scheme as the candidate"
+scope = "xmip:///n"
+candidate = "n/receive/a"
+contains = true
+
+[[case]]
+why = "a slash at either end of the scope is ignored"
+scope = "/n/receive/"
+candidate = "xmip:///n/receive/a"
+contains = true
+path = "n/receive"
+is_root = false
+
+[[case]]
+why = "a trailing slash on the scope is ignored"
+scope = "xmip:///n/receive/"
+candidate = "xmip:///n/receive"
+contains = true
+
+[[case]]
+why = "a trailing slash on the candidate is ignored"
+scope = "xmip:///n/receive"
+candidate = "xmip:///n/receive/"
+contains = true
+
+[[case]]
+why = "the scheme is lower-case: XMIP:///C1 is a path, not a scope"
+scope = "xmip:///C1"
+candidate = "XMIP:///C1"
+contains = false
+
+[[case]]
+why = "an upper-case scheme is read as the start of a path, on both sides alike"
+scope = "XMIP:///C1"
+candidate = "XMIP:///C1/node"
+contains = true
+is_root = false
+
+[[case]]
+why = "segments compare case-sensitively"
+scope = "xmip:///n"
+candidate = "xmip:///N/receive"
+contains = false
+
+# Query and fragment: not stripped on either side today. ADR-0027 clause 3
+# puts a Party filter in the query, and no scope the estate publishes carries
+# one yet; these cases record the current behavior so a change to it is made
+# in both writers at once.
+
+[[case]]
+why = "a query on the candidate rides along in its last segment"
+scope = "xmip:///n/receive"
+candidate = "xmip:///n/receive/a?party=partner-x"
+contains = true
+
+[[case]]
+why = "a query on the scope is part of its path today"
+scope = "xmip:///n/receive?party=partner-x"
+candidate = "xmip:///n/receive/a"
+contains = false
+path = "n/receive?party=partner-x"
+is_root = false
+
+[[case]]
+why = "a fragment is part of the path today"
+scope = "xmip:///n#top"
+candidate = "xmip:///n"
+contains = false
+path = "n#top"
+is_root = false

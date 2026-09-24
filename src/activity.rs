@@ -12,7 +12,7 @@
 
 use std::collections::VecDeque;
 
-use crate::scope::beneath;
+use crate::scope::Scope;
 
 /// Which of the three units an item is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,10 +82,11 @@ impl Activity {
     /// `kind` filters to one of the three when given.
     #[must_use]
     pub fn recent(&self, scope: &str, kind: Option<ItemKind>, limit: usize) -> Vec<Item> {
+        let scope = Scope::new(scope);
         self.items
             .iter()
             .rev()
-            .filter(|item| beneath(&item.scope, scope))
+            .filter(|item| scope.contains(Scope::new(&item.scope)))
             .filter(|item| kind.is_none_or(|wanted| item.kind == wanted))
             .take(limit)
             .cloned()
