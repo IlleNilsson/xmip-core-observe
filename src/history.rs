@@ -13,7 +13,8 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::snapshot::{Count, Counted, HealthRecord, Snapshot};
+use crate::counted::Counted;
+use crate::snapshot::{Count, HealthRecord, Snapshot};
 
 /// The default points a [`History`] keeps per series: enough to watch a shift
 /// at one point a second without unbounded growth. Named for what it bounds,

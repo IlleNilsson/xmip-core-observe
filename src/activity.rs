@@ -35,6 +35,14 @@ impl ItemKind {
             ItemKind::Journey => "journey",
         }
     }
+
+    /// The kind a token names, exactly, or `None`.
+    #[must_use]
+    pub fn named(token: &str) -> Option<Self> {
+        [ItemKind::Stream, ItemKind::Message, ItemKind::Journey]
+            .into_iter()
+            .find(|kind| kind.name() == token)
+    }
 }
 
 /// One observed item: what it is, where, its identity, its size, when it was
