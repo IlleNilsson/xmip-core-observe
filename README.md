@@ -21,7 +21,8 @@ A publication is a snapshot as the file a surface reads: `Publication`
 writes it (`of` for a roll's sums, `whole` for a node's own file) and reads
 it back, with the records, the counts, what the run was started with (`Run`)
 and the communication topology (`topology`: its nodes, links and their
-words). A node's throughput over time is `Curve`, the history file, and the
+words, each value's `word` and the `name` a person reads it by, and a link's rate over two readings, `Topology::rate_since`, which the
+publisher states and no surface computes). A node's throughput over time is `Curve`, the history file, and the
 recent items beneath a scope are `Recent`, the activity file; each is
 written and read here, as a publication is. What a reader does not know it
 decides here once — an unknown mood

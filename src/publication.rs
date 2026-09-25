@@ -384,8 +384,8 @@ mod tests {
     fn the_run_and_the_topology_ride_along_and_a_missing_label_is_the_id() {
         let run = Run {
             cluster: "C1".to_string(),
-            nodes: vec!["R1".to_string()],
-            capabilities: vec!["R1=receive".to_string()],
+            nodes: vec!["alpha".to_string()],
+            capabilities: vec!["alpha=receive".to_string()],
             ..Run::default()
         };
         let topology = Topology {
