@@ -24,7 +24,7 @@ pub struct Run {
     #[serde(default)]
     pub nodes: Vec<String>,
     /// What each node was started with, as `node::Capability::entry` writes
-    /// it: `R1=receive+send`, or the bare name of a node that declared no
+    /// it: `alpha=receive+send`, or the bare name of a node that declared no
     /// stage (ADR-0056).
     #[serde(default)]
     pub capabilities: Vec<String>,

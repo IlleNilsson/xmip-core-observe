@@ -48,18 +48,18 @@ mod tests {
 
     #[test]
     fn a_node_publishes_beneath_itself_and_reads_back_by_the_same_place() {
-        let at = scope("xmip:///C1/node/R1");
-        assert_eq!(at, "xmip:///C1/node/R1/capability");
+        let at = scope("xmip:///C1/node/alpha");
+        assert_eq!(at, "xmip:///C1/node/alpha/capability");
 
         let evidence = Capability::of(&[Stage::Receive]).evidence();
         let (node, said) = declared(&at, &evidence).expect("a capability record");
-        assert_eq!(node, "R1");
+        assert_eq!(node, "alpha");
         assert_eq!(said, Ok(Capability::of(&[Stage::Receive])));
     }
 
     #[test]
     fn any_other_record_is_no_declaration() {
-        assert!(declared("xmip:///C1/node/R1/receive/tcp", "declares send").is_none());
+        assert!(declared("xmip:///C1/node/alpha/receive/tcp", "declares send").is_none());
         assert!(declared("xmip:///capability", "declares send").is_none());
         assert!(declared("", "").is_none());
     }
