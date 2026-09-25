@@ -34,7 +34,12 @@ A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
 `Scope` reads one — the scheme and the authority go, a slash at either end
 is ignored, empty text is the root — `Scope::segments` splits it, and
 `Scope::contains` is the one containment rule the snapshot and the activity
-log answer by: at and beneath, by segment, never by character.
+log answer by: at and beneath, by segment, never by character. `Scope::node`
+is the node a scope is on — the segment after the `node` marker beneath the
+cluster, `xmip:///<cluster>/node/<name>` (ADR-0053), and none for a scope on
+no node, since the cluster is never one — and `Scope::stage` the stage of the
+message path it is on, beneath its node or its cluster, so no name is read as
+a stage.
 
 These are written once, here, and nowhere else. The runtime's cdylib
 forwards each to the surfaces over `xmip_operate.h` sections 7 and 8 — a

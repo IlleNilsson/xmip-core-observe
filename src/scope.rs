@@ -15,12 +15,23 @@
 //! over `xmip_operate.h` section 7 — `xmip_scope_contains_v1` and
 //! `xmip_scope_parts_v1` — and `ScopeTree` in `Xmip.Surface` calls those
 //! rather than keeping a writing of its own (ADR-0052, amendment 2026-09-24:
-//! one implementation, the surfaces call the runtime's exports).
+//! one implementation, the surfaces call the runtime's exports). The node a
+//! scope is on and its stage there are asked here too, and crossed as
+//! `xmip_scope_node_v1`; until 2026-09-25 the Monitor took the first segment
+//! for the node and the prompt looked for the marker itself (row q).
+
+use node::Stage;
 
 /// The scheme every scope carries, lower-case: `XMIP:///C1` is a path, not a
 /// scope, as `ScopeTree` and `ScopePattern` read it (ADR-0052, amendment
 /// 2026-09-14).
 const SCHEME: &str = "xmip://";
+
+/// The segment that marks a node beneath its cluster:
+/// `xmip:///<cluster>/node/<name>`, the location ADR-0053 gives a node. A
+/// kind the shape carries, not a word a name may not use: a node called
+/// `node` is `xmip:///C1/node/node`.
+pub const NODE: &str = "node";
 
 /// A scope, read as the path it names in the one tree.
 ///
@@ -73,6 +84,31 @@ impl<'a> Scope<'a> {
     /// read from.
     pub fn segments(self) -> impl Iterator<Item = &'a str> {
         self.path.split('/').filter(|segment| !segment.is_empty())
+    }
+
+    /// The node this scope is on: the segment after the node marker beneath
+    /// the cluster, `alpha` in `xmip:///C1/node/alpha/receive/tcp`. `None`
+    /// for a scope on no node — the cluster, its `node` rollup, a test run at
+    /// the cluster — because the cluster is never a node. Read by position,
+    /// so no name is taken for a kind (open problem 25, row q).
+    #[must_use]
+    pub fn node(self) -> Option<&'a str> {
+        let mut segments = self.segments();
+        match (segments.next(), segments.next(), segments.next()) {
+            (Some(_), Some(NODE), Some(name)) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// The stage of the message path this scope is on: the first stage word
+    /// beneath its node, or, on no node, beneath its cluster —
+    /// `xmip:///C1/node/alpha/receive/tcp` and
+    /// `xmip:///C1/round-trip/send/tcp/json` alike. A cluster's or a node's
+    /// name is never read as a stage, so a node called `send` is no stage.
+    #[must_use]
+    pub fn stage(self) -> Option<Stage> {
+        let beneath = if self.node().is_some() { 3 } else { 1 };
+        self.segments().skip(beneath).find_map(Stage::named)
     }
 
     /// Whether `other` is this scope or sits beneath it in the tree.
@@ -183,6 +219,45 @@ mod tests {
         );
         assert!(!beneath("xmip:///n/receive/a", "xmip:///n/receive?party=x"));
         assert!(!beneath("xmip:///n", "xmip:///n#top"));
+    }
+
+    #[test]
+    fn the_node_follows_the_marker_beneath_the_cluster_and_the_cluster_is_none() {
+        let node = |scope: &'static str| Scope::new(scope).node();
+        assert_eq!(node("xmip:///C1/node/alpha/receive/tcp"), Some("alpha"));
+        assert_eq!(node("xmip://lab/C1/node/alpha"), Some("alpha"));
+        assert_eq!(node("xmip:///C1/node/node/send"), Some("node"));
+        for none in [
+            "xmip:///",
+            "xmip:///C1",
+            "xmip:///C1/node",
+            "xmip:///C1/round-trip/send/tcp",
+            "xmip:///C1/shared/node/x",
+            "xmip:///edge-01/receive/orders",
+        ] {
+            assert_eq!(node(none), None, "{none}");
+        }
+    }
+
+    #[test]
+    fn the_stage_is_beneath_the_node_or_the_cluster_and_never_a_name() {
+        let stage = |scope: &str| Scope::new(scope).stage();
+        assert_eq!(
+            stage("xmip:///C1/node/alpha/receive/tcp"),
+            Some(Stage::Receive)
+        );
+        assert_eq!(
+            stage("xmip:///C1/round-trip/send/tcp/json"),
+            Some(Stage::Send)
+        );
+        assert_eq!(
+            stage("xmip:///C1/node/send/process/x"),
+            Some(Stage::Process)
+        );
+        assert_eq!(stage("xmip:///C1/node/send"), None);
+        assert_eq!(stage("xmip:///receive/filing/file"), None);
+        assert_eq!(stage("xmip:///C1/node/alpha/Receive"), None, "exact");
+        assert_eq!(stage("xmip:///"), None);
     }
 
     #[test]
