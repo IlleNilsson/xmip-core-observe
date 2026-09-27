@@ -1,0 +1,6 @@
+[submodule "otlp"]
+	path = otlp
+	url = https://github.com/IlleNilsson/xmip-core-observe-otlp.git
+[submodule "prometheus"]
+	path = prometheus
+	url = https://github.com/IlleNilsson/xmip-core-observe-prometheus.git
