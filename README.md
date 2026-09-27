@@ -42,6 +42,10 @@ no node, since the cluster is never one — and `Scope::stage` the stage of the
 message path it is on, beneath its node or its cluster, so no name is read as
 a stage.
 
+A record is stamped by `observe::now_unix_nanos`: the estate's one clock,
+`xcore::SystemClock`, in the unit a record and `xmip_operate.h` carry —
+nanoseconds since the Unix epoch as an `i64`.
+
 These are written once, here, and nowhere else. The runtime's cdylib
 forwards each to the surfaces over `xmip_operate.h` sections 7 and 8 — a
 publication and a curve are read by the runtime and handed over as the

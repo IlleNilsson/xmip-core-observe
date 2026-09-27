@@ -37,3 +37,13 @@ pub use run::{Run, RunList};
 pub use scope::Scope;
 pub use snapshot::{Count, HealthRecord, Snapshot};
 pub use topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
+
+use xcore::{Clock, SystemClock};
+
+/// Now, as an observe record is stamped: the estate's one clock,
+/// `xcore::SystemClock`, in the unit a record and `xmip_operate.h` carry —
+/// unix nanoseconds as an `i64`, saturating past it.
+#[must_use]
+pub fn now_unix_nanos() -> i64 {
+    i64::try_from(SystemClock.unix_timestamp_nanos()).unwrap_or(i64::MAX)
+}
