@@ -47,36 +47,19 @@ pub struct Publication {
 }
 
 impl Publication {
-    /// A roll's publication: the records beneath `node` and every kind summed
-    /// at `node`.
-    #[must_use]
-    pub fn of(source: &str, node: &str, snapshot: &Snapshot) -> Self {
-        Self {
-            counts: Counted::ALL
-                .into_iter()
-                .filter_map(|counted| snapshot.measure(node, counted))
-                .collect(),
-            ..Self::bare(source, node, snapshot)
-        }
-    }
-
-    /// A node's own publication: the records beneath `node` and every count
-    /// at the scope it was recorded at — two tests on one node count the same
-    /// kinds, and a cluster assembling its nodes must tell them apart.
+    /// A publication — a node's or a roll's: the records beneath `node` and
+    /// every count at the scope it was recorded at. Two tests on one node
+    /// count the same kinds, a cluster assembling its nodes must tell them
+    /// apart, and a surface asked about a node or a stage sums what is
+    /// beneath it. Until 2026-09-26 a roll published only every kind summed
+    /// at `node`, and no surface could say what a node or a stage had moved.
     #[must_use]
     pub fn whole(source: &str, node: &str, snapshot: &Snapshot) -> Self {
-        Self {
-            counts: snapshot.all_counts().cloned().collect(),
-            ..Self::bare(source, node, snapshot)
-        }
-    }
-
-    fn bare(source: &str, node: &str, snapshot: &Snapshot) -> Self {
         Self {
             source: source.to_string(),
             node: node.to_string(),
             records: snapshot.health(node),
-            counts: Vec::new(),
+            counts: snapshot.all_counts().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -323,8 +306,10 @@ mod tests {
     }
 
     #[test]
-    fn a_roll_publishes_its_sums_at_its_scope_and_they_read_back_there() {
-        let text = Publication::of("playground — n", "xmip:///n", &published()).to_toml();
+    fn a_count_at_the_publishers_own_scope_is_written_without_one_and_reads_back_there() {
+        let mut summed = published();
+        summed.record_count(count("xmip:///n", Counted::Bytes, 40));
+        let text = Publication::whole("playground — n", "xmip:///n", &summed).to_toml();
         assert!(text.contains("state = \"done\""), "{text}");
         assert!(text.contains("counted = \"streams\""), "{text}");
         assert!(!text.contains("scope = \"xmip:///n\""), "{text}");
@@ -335,9 +320,9 @@ mod tests {
         let bytes = read
             .counts
             .iter()
-            .find(|count| count.counted == Counted::Bytes)
-            .expect("bytes");
-        assert_eq!((bytes.scope.as_str(), bytes.value), ("xmip:///n", 40));
+            .find(|count| count.counted == Counted::Bytes && count.scope == "xmip:///n")
+            .expect("bytes at the node itself");
+        assert_eq!(bytes.value, 40);
         assert_eq!(bytes.observed_unix_nanos, 9, "dated by the newest record");
     }
 
@@ -405,7 +390,7 @@ mod tests {
             }],
             links: Vec::new(),
         };
-        let text = Publication::of("roll", "xmip:///C1", &Snapshot::new())
+        let text = Publication::whole("roll", "xmip:///C1", &Snapshot::new())
             .with_run(Some(run.clone()))
             .with_topology(Some(topology))
             .to_toml();

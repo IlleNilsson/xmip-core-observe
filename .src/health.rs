@@ -81,6 +81,14 @@ impl Health {
         Self::ALL.into_iter().find(|health| health.word() == word)
     }
 
+    /// The mood's place in the worsening order, `Fine` 0 to `Holding` 6: the
+    /// number an exporter publishes a mood as, where a monitoring system
+    /// holds numbers and not words (`figure`). The word travels beside it.
+    #[must_use]
+    pub const fn rank(self) -> u8 {
+        self as u8
+    }
+
     /// What a parent shows when this is the worst mood beneath it (ADR-0041):
     /// `Fine` when it is `Fine`, and `Holding` the moment it is anything
     /// else. A leaf's mood does not propagate; the leaf that owns the trouble
@@ -227,6 +235,11 @@ mod tests {
     fn all_is_in_worsening_order_with_the_rollup_last() {
         assert!(Health::ALL.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(Health::ALL.last(), Some(&Health::Holding));
+    }
+
+    #[test]
+    fn a_mood_ranks_by_its_place_in_the_order() {
+        assert_eq!(Health::ALL.map(Health::rank), [0, 1, 2, 3, 4, 5, 6]);
     }
 
     #[test]

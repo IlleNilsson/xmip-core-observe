@@ -18,7 +18,8 @@ severity, then the scope). `Counted` is what a count counts, with its word
 and the kind each stage of the message path counts (`at`).
 
 A publication is a snapshot as the file a surface reads: `Publication`
-writes it (`of` for a roll's sums, `whole` for a node's own file) and reads
+writes it (`whole`: every count at the scope it was recorded at, so a
+reader sums what is beneath any scope — a roll's file and a node's alike) and reads
 it back, with the records, the counts, what the run was started with (`Run`)
 and the communication topology (`topology`: its nodes, links and their
 words, each value's `word` and the `name` a person reads it by, and a link's rate over two readings, `Topology::rate_since`, which the
@@ -49,6 +50,25 @@ and `Xmip.Surface`, the PowerShell module and the GUI call those exports
 rather than keep a copy; the Playground writes and reads its files through
 `Publication` (ADR-0052, amendments 2026-09-24).
 
-`doc/architecture/observability-model.md` sections 6 and 7 govern it; each
-exporter is a technology under this repository, and `architecture.toml` names
-them.
+## What an operator's own monitoring reads
+
+A figure is what an exporter writes of a snapshot (`figure`): its name
+segment by segment, its unit, a line saying what it is, whether it is a
+level (`Kind::Gauge`) or a count over its window (`Kind::Window`), and
+its points, one per scope. `FIGURES` is every one — `xmip.health` (a
+mood by its rank, `Health::rank`, `fine` 0 to `holding` 6, its word
+beside it), `xmip.health.severity`, and one per `Counted` kind named by
+its word — and `Reading` reads a snapshot for an export in one pass: its
+scopes once each, in order, and each figure's points knowing which scope
+they are of (`Point::at`), so an exporter writes a scope's text once.
+Each exporter is a technology mounted beside this crate's source, which
+is why that source is `.src` (ADR-0049), and each writes the same figures
+in its own format:
+
+| Technology | What it does |
+| --- | --- |
+| [`otlp`](https://github.com/IlleNilsson/xmip-core-observe-otlp) | OpenTelemetry metrics, protobuf over OTLP/HTTP, pushed on every change from a thread of its own |
+| [`prometheus`](https://github.com/IlleNilsson/xmip-core-observe-prometheus) | A scrape endpoint in the text exposition format 0.0.4, rendered at each scrape from the last snapshot |
+
+`doc/architecture/observability-model.md` sections 6 and 7 govern it, and
+`architecture.toml` names the technologies.
