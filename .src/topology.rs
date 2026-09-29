@@ -106,6 +106,10 @@ pub enum NodeKind {
     Stage,
     /// A receiving or sending endpoint of a stage, one per transport.
     Endpoint,
+    /// A Party outside the cluster (ADR-0019): one that sends into a
+    /// Receive Location, or one a Send Location delivers to. Which of the
+    /// two a Party is drawn as is said by its links, never by its name.
+    Party,
 }
 
 worded!(NodeKind, Computer, {
@@ -124,6 +128,7 @@ worded!(NodeKind, Computer, {
     Node => "node" as "node",
     Stage => "stage" as "stage",
     Endpoint => "endpoint" as "endpoint",
+    Party => "party" as "party",
 });
 
 /// Where a topology fact came from.
@@ -287,6 +292,7 @@ mod tests {
                 "a pattern is named, not spelled"
             );
         }
+        assert_eq!(NodeKind::named("party"), Some(NodeKind::Party));
         assert_eq!(NodeKind::named("mainframe"), None);
         assert_eq!(NodeKind::default(), NodeKind::Computer);
         assert_eq!(Origin::default(), Origin::Both);
