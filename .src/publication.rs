@@ -2,8 +2,9 @@
 //! read here and nowhere else.
 //!
 //! A publisher and its readers are separate processes, and the bridge
-//! between them is a file. Its shape — `source`, `node`, `[[records]]`,
-//! `[[counts]]`, and a roll's `[run]` and `[topology]` — was written by the
+//! between them is a file. Its shape — `source`, `node`, `orders`,
+//! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, and a roll's `[run]` and
+//! `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: the Playground writes
 //! through [`Publication::to_toml`], reads its nodes' files back through
@@ -26,6 +27,7 @@ use crate::counted::Counted;
 use crate::health::Health;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
+use crate::subscription::{Subscription, SubscriptionDocument};
 use crate::topology::Topology;
 
 /// One publication, read or about to be written.
@@ -35,11 +37,17 @@ pub struct Publication {
     pub source: String,
     /// The scope it publishes at: a node's, or a roll's cluster.
     pub node: String,
+    /// Where a surface leaves an operator's act on a subscription for the
+    /// publisher to take (`xmip-core-event`'s `order`), empty where the
+    /// publisher takes none (ADR-0065, amendment 2026-09-29).
+    pub orders: String,
     /// The health records beneath `node`, worst first.
     pub records: Vec<HealthRecord>,
     /// The counts: each at the scope it was recorded at, or at `node` where
     /// the publisher summed them there.
     pub counts: Vec<Count>,
+    /// The Event subscriptions the nodes beneath `node` hold.
+    pub subscriptions: Vec<Subscription>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -58,8 +66,10 @@ impl Publication {
         Self {
             source: source.to_string(),
             node: node.to_string(),
+            orders: String::new(),
             records: snapshot.health(node),
             counts: snapshot.all_counts().cloned().collect(),
+            subscriptions: snapshot.subscriptions().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -69,6 +79,13 @@ impl Publication {
     #[must_use]
     pub fn with_run(mut self, run: Option<Run>) -> Self {
         self.run = run;
+        self
+    }
+
+    /// The same publication saying where a surface leaves its acts.
+    #[must_use]
+    pub fn with_orders(mut self, orders: impl Into<String>) -> Self {
+        self.orders = orders.into();
         self
     }
 
@@ -86,6 +103,7 @@ impl Publication {
         let document = Document {
             source: self.source.clone(),
             node: self.node.clone(),
+            orders: self.orders.clone(),
             records: self.records.iter().map(RecordDocument::of).collect(),
             counts: self
                 .counts
@@ -99,6 +117,11 @@ impl Publication {
                         count.scope.clone()
                     },
                 })
+                .collect(),
+            subscriptions: self
+                .subscriptions
+                .iter()
+                .map(SubscriptionDocument::of)
                 .collect(),
             run: self.run.clone(),
             topology: self.topology.clone(),
@@ -151,12 +174,18 @@ impl Publication {
         Ok(Self {
             source: document.source,
             node,
+            orders: document.orders,
             records: document
                 .records
                 .into_iter()
                 .map(RecordDocument::into_record)
                 .collect(),
             counts,
+            subscriptions: document
+                .subscriptions
+                .into_iter()
+                .map(SubscriptionDocument::into_subscription)
+                .collect(),
             run: document.run,
             topology,
         })
@@ -173,6 +202,9 @@ impl Publication {
         for count in &self.counts {
             snapshot.record_count(count.clone());
         }
+        for subscription in &self.subscriptions {
+            snapshot.record_subscription(subscription.clone());
+        }
         snapshot
     }
 }
@@ -184,10 +216,14 @@ struct Document {
     source: String,
     #[serde(default)]
     node: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    orders: String,
     #[serde(default)]
     records: Vec<RecordDocument>,
     #[serde(default)]
     counts: Vec<CountDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    subscriptions: Vec<SubscriptionDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -362,6 +398,41 @@ mod tests {
         assert_eq!(
             Publication::read("").map(|read| read.node),
             Ok(String::new())
+        );
+    }
+
+    #[test]
+    fn the_subscriptions_and_where_acts_go_ride_along_and_merge_by_node_and_number() {
+        let held = Subscription {
+            node: "xmip:///C1/node/R1".to_string(),
+            id: 2,
+            subscriber: "operations".to_string(),
+            party: "0190a0a0-0000-7000-8000-000000000001".to_string(),
+            action: "every Event".to_string(),
+            scope: "xmip:///C1/node/R1".to_string(),
+            state: crate::subscription::SubscriptionState::Paused,
+            queued: 3,
+            capacity: 64,
+            delivered: 7,
+            missed: 1,
+            since_unix_nanos: 11,
+        };
+        let mut snapshot = Snapshot::new();
+        snapshot.record_subscription(held.clone());
+        snapshot.record_subscription(held.clone());
+        let text = Publication::whole("roll", "xmip:///C1", &snapshot)
+            .with_orders("shared/orders")
+            .to_toml();
+        assert!(text.contains("[[subscriptions]]") && text.contains("state = \"paused\""));
+
+        let read = Publication::read(&text).expect("reads");
+        assert_eq!(read.orders, "shared/orders");
+        assert_eq!(read.subscriptions, vec![held]);
+        assert_eq!(read.snapshot().subscriptions().count(), 1);
+        let bare = Publication::whole("n", "xmip:///n", &Snapshot::new()).to_toml();
+        assert!(
+            !bare.contains("orders") && !bare.contains("subscriptions"),
+            "{bare}"
         );
     }
 

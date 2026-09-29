@@ -23,6 +23,7 @@ pub mod recent;
 pub mod run;
 pub mod scope;
 pub mod snapshot;
+pub mod subscription;
 pub mod topology;
 pub mod wildcard;
 
@@ -37,6 +38,7 @@ pub use recent::Recent;
 pub use run::{Run, RunList};
 pub use scope::Scope;
 pub use snapshot::{Count, HealthRecord, Snapshot};
+pub use subscription::{Subscription, SubscriptionState};
 pub use topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
 
 use xcore::{Clock, SystemClock};

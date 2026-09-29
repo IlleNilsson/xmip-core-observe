@@ -31,6 +31,12 @@ shows as Stressed, an unknown counted kind is skipped. Where a node
 publishes its capability, and how that record reads back, is `capability`,
 over `xmip-core-node`'s `Capability`.
 
+A publication also carries the Event subscriptions its nodes' hubs hold
+(`Subscription`, its state's words in `SubscriptionState`), which a snapshot
+keeps by node and number (`Snapshot::record_subscription`), and `orders`, the
+directory where its publisher takes an operator's act on one — the event
+crate writes and reads the act itself (ADR-0065, amendment 2026-09-29).
+
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
 `Scope` reads one — the scheme and the authority go, a slash at either end
 is ignored, empty text is the root — `Scope::segments` splits it, and
