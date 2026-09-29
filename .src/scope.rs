@@ -210,12 +210,12 @@ mod tests {
         // ADR-0027 clause 3 puts a Party filter in the query, and no scope the
         // estate publishes carries one yet; this is the behavior until then.
         assert!(beneath(
-            "xmip:///n/receive/a?party=partner-x",
+            "xmip:///n/receive/a?party=party-x",
             "xmip:///n/receive"
         ));
         assert_eq!(
-            Scope::new("xmip:///n/receive?party=partner-x").path(),
-            "n/receive?party=partner-x"
+            Scope::new("xmip:///n/receive?party=party-x").path(),
+            "n/receive?party=party-x"
         );
         assert!(!beneath("xmip:///n/receive/a", "xmip:///n/receive?party=x"));
         assert!(!beneath("xmip:///n", "xmip:///n#top"));
