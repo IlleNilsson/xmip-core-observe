@@ -42,6 +42,12 @@ no node, since the cluster is never one — and `Scope::stage` the stage of the
 message path it is on, beneath its node or its cluster, so no name is read as
 a stage.
 
+The one wildcard over scopes is `wildcard::matches`: `*` and `?`, literal
+everything else, case-insensitive, `*` crossing a `/`, both sides read as
+scopes first (ADR-0052, amendment 2026-09-19). It moved here from
+`Xmip.Surface`'s `ScopePattern` on 2026-09-29, when the audit read needed it
+in Rust; the runtime forwards it as `xmip_scope_matches_v1`.
+
 A record is stamped by `observe::now_unix_nanos`: the estate's one clock,
 `xcore::SystemClock`, in the unit a record and `xmip_operate.h` carry —
 nanoseconds since the Unix epoch as an `i64`.

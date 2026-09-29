@@ -24,6 +24,7 @@ pub mod run;
 pub mod scope;
 pub mod snapshot;
 pub mod topology;
+pub mod wildcard;
 
 pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
 pub use counted::Counted;
