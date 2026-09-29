@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use crate::counted::Counted;
 use crate::health::{Health, Standing};
 use crate::scope::Scope;
+use crate::subscription::Subscription;
 
 /// The severity a paused scope publishes. A category, not a measurement: a
 /// deliberate stop is a correctable state, and it stays that however long it
@@ -65,6 +66,9 @@ pub struct Snapshot {
     /// What a paused scope looked like before it was paused, so resume puts
     /// it back rather than guessing.
     paused: BTreeMap<String, HealthRecord>,
+    /// The Event subscriptions each node's hub holds, by node and number
+    /// (ADR-0065, amendment 2026-09-29).
+    subscriptions: BTreeMap<(String, u64), Subscription>,
 }
 
 impl Snapshot {
@@ -106,6 +110,18 @@ impl Snapshot {
     /// Every count in the snapshot, for the same reason.
     pub fn all_counts(&self) -> impl Iterator<Item = &Count> {
         self.counts.values()
+    }
+
+    /// Record one Event subscription a node's hub holds. Replaces what was
+    /// there for that node and number.
+    pub fn record_subscription(&mut self, subscription: Subscription) {
+        self.subscriptions
+            .insert((subscription.node.clone(), subscription.id), subscription);
+    }
+
+    /// Every Event subscription in the snapshot, by node and number.
+    pub fn subscriptions(&self) -> impl Iterator<Item = &Subscription> {
+        self.subscriptions.values()
     }
 
     /// Pause everything at and beneath a scope. Each affected record is held at
