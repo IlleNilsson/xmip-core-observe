@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 
 use crate::counted::Counted;
+use crate::event_subscription::EventSubscription;
 use crate::health::{Health, Standing};
 use crate::scope::Scope;
 use crate::subscription::Subscription;
@@ -68,7 +69,10 @@ pub struct Snapshot {
     paused: BTreeMap<String, HealthRecord>,
     /// The Event subscriptions each node's hub holds, by node and number
     /// (ADR-0065, amendment 2026-09-29).
-    subscriptions: BTreeMap<(String, u64), Subscription>,
+    event_subscriptions: BTreeMap<(String, u64), EventSubscription>,
+    /// The Subscriptions each node routes by, by node and name (ADR-0013,
+    /// amendment 2026-09-30).
+    subscriptions: BTreeMap<(String, String), Subscription>,
 }
 
 impl Snapshot {
@@ -114,12 +118,26 @@ impl Snapshot {
 
     /// Record one Event subscription a node's hub holds. Replaces what was
     /// there for that node and number.
-    pub fn record_subscription(&mut self, subscription: Subscription) {
-        self.subscriptions
+    pub fn record_event_subscription(&mut self, subscription: EventSubscription) {
+        self.event_subscriptions
             .insert((subscription.node.clone(), subscription.id), subscription);
     }
 
     /// Every Event subscription in the snapshot, by node and number.
+    pub fn event_subscriptions(&self) -> impl Iterator<Item = &EventSubscription> {
+        self.event_subscriptions.values()
+    }
+
+    /// Record one Subscription a node routes by. Replaces what was there for
+    /// that node and name.
+    pub fn record_subscription(&mut self, subscription: Subscription) {
+        self.subscriptions.insert(
+            (subscription.node.clone(), subscription.name.clone()),
+            subscription,
+        );
+    }
+
+    /// Every Subscription in the snapshot, by node and name.
     pub fn subscriptions(&self) -> impl Iterator<Item = &Subscription> {
         self.subscriptions.values()
     }
