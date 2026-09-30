@@ -31,11 +31,18 @@ shows as Stressed, an unknown counted kind is skipped. Where a node
 publishes its capability, and how that record reads back, is `capability`,
 over `xmip-core-node`'s `Capability`.
 
-A publication also carries the Event subscriptions its nodes' hubs hold
-(`Subscription`, its state's words in `SubscriptionState`), which a snapshot
-keeps by node and number (`Snapshot::record_subscription`), and `orders`, the
-directory where its publisher takes an operator's act on one — the event
-crate writes and reads the act itself (ADR-0065, amendment 2026-09-29).
+A publication also carries the Subscriptions its nodes route by
+(`Subscription`: its configured name, filter, destination, the file and the
+entry it is configured in, whether it is paused, what it picked up and what
+it holds; ADR-0013, amendment 2026-09-30), kept by node and name
+(`Snapshot::record_subscription`), and the Event subscriptions its nodes'
+hubs hold (`EventSubscription`; ADR-0065, amendment 2026-09-29), kept by node
+and number (`Snapshot::record_event_subscription`). Both say active or
+paused in `PauseState`'s words. `orders` is the directory where its
+publisher takes an operator's act on either: `Order` writes and takes the
+file, `Act` names pause, resume and remove once, and `Noun` says which acts
+each takes — an Event subscription all three, a Subscription pause and
+resume only, since it is added and removed in the TOML configuration.
 
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
 `Scope` reads one — the scheme and the authority go, a slash at either end

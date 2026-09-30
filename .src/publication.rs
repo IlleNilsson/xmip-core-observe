@@ -3,8 +3,8 @@
 //!
 //! A publisher and its readers are separate processes, and the bridge
 //! between them is a file. Its shape — `source`, `node`, `orders`,
-//! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, and a roll's `[run]` and
-//! `[topology]` — was written by the
+//! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
+//! and a roll's `[run]` and `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: the Playground writes
 //! through [`Publication::to_toml`], reads its nodes' files back through
@@ -24,6 +24,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::counted::Counted;
+use crate::event_subscription::{EventSubscription, EventSubscriptionDocument};
 use crate::health::Health;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
@@ -37,17 +38,20 @@ pub struct Publication {
     pub source: String,
     /// The scope it publishes at: a node's, or a roll's cluster.
     pub node: String,
-    /// Where a surface leaves an operator's act on a subscription for the
-    /// publisher to take (`xmip-core-event`'s `order`), empty where the
-    /// publisher takes none (ADR-0065, amendment 2026-09-29).
+    /// Where a surface leaves an operator's act on a Subscription or an
+    /// Event subscription for the publisher to take ([`crate::Order`]),
+    /// empty where the publisher takes none (ADR-0065, amendment
+    /// 2026-09-29; ADR-0013, amendment 2026-09-30).
     pub orders: String,
     /// The health records beneath `node`, worst first.
     pub records: Vec<HealthRecord>,
     /// The counts: each at the scope it was recorded at, or at `node` where
     /// the publisher summed them there.
     pub counts: Vec<Count>,
-    /// The Event subscriptions the nodes beneath `node` hold.
+    /// The Subscriptions the nodes beneath `node` route by.
     pub subscriptions: Vec<Subscription>,
+    /// The Event subscriptions the nodes beneath `node` hold.
+    pub event_subscriptions: Vec<EventSubscription>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -70,6 +74,7 @@ impl Publication {
             records: snapshot.health(node),
             counts: snapshot.all_counts().cloned().collect(),
             subscriptions: snapshot.subscriptions().cloned().collect(),
+            event_subscriptions: snapshot.event_subscriptions().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -122,6 +127,11 @@ impl Publication {
                 .subscriptions
                 .iter()
                 .map(SubscriptionDocument::of)
+                .collect(),
+            event_subscriptions: self
+                .event_subscriptions
+                .iter()
+                .map(EventSubscriptionDocument::of)
                 .collect(),
             run: self.run.clone(),
             topology: self.topology.clone(),
@@ -186,6 +196,11 @@ impl Publication {
                 .into_iter()
                 .map(SubscriptionDocument::into_subscription)
                 .collect(),
+            event_subscriptions: document
+                .event_subscriptions
+                .into_iter()
+                .map(EventSubscriptionDocument::into_event_subscription)
+                .collect(),
             run: document.run,
             topology,
         })
@@ -204,6 +219,9 @@ impl Publication {
         }
         for subscription in &self.subscriptions {
             snapshot.record_subscription(subscription.clone());
+        }
+        for subscription in &self.event_subscriptions {
+            snapshot.record_event_subscription(subscription.clone());
         }
         snapshot
     }
@@ -224,6 +242,8 @@ struct Document {
     counts: Vec<CountDocument>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     subscriptions: Vec<SubscriptionDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    event_subscriptions: Vec<EventSubscriptionDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -402,32 +422,49 @@ mod tests {
     }
 
     #[test]
-    fn the_subscriptions_and_where_acts_go_ride_along_and_merge_by_node_and_number() {
-        let held = Subscription {
-            node: "xmip:///C1/node/R1".to_string(),
+    fn both_kinds_of_subscription_and_where_acts_go_ride_along_each_by_its_own_key() {
+        let held = EventSubscription {
+            node: "xmip:///C1/node/alpha".to_string(),
             id: 2,
             subscriber: "operations".to_string(),
             party: "0190a0a0-0000-7000-8000-000000000001".to_string(),
             action: "every Event".to_string(),
-            scope: "xmip:///C1/node/R1".to_string(),
-            state: crate::subscription::SubscriptionState::Paused,
+            scope: "xmip:///C1/node/alpha".to_string(),
+            state: crate::PauseState::Paused,
             queued: 3,
             capacity: 64,
             delivered: 7,
             missed: 1,
             since_unix_nanos: 11,
         };
+        let routed = Subscription {
+            node: "xmip:///C1/node/beta".to_string(),
+            name: "structured".to_string(),
+            application: "RoundTrip".to_string(),
+            filter: "MessageType = 'json'".to_string(),
+            state: crate::PauseState::Paused,
+            by: "ilian".to_string(),
+            held: 4,
+            ..Subscription::default()
+        };
         let mut snapshot = Snapshot::new();
-        snapshot.record_subscription(held.clone());
-        snapshot.record_subscription(held.clone());
+        snapshot.record_event_subscription(held.clone());
+        snapshot.record_event_subscription(held.clone());
+        snapshot.record_subscription(routed.clone());
         let text = Publication::whole("roll", "xmip:///C1", &snapshot)
             .with_orders("shared/orders")
             .to_toml();
-        assert!(text.contains("[[subscriptions]]") && text.contains("state = \"paused\""));
+        assert!(text.contains("[[event_subscriptions]]"), "{text}");
+        assert!(
+            text.contains("[[subscriptions]]") && text.contains("held = 4"),
+            "{text}"
+        );
 
         let read = Publication::read(&text).expect("reads");
         assert_eq!(read.orders, "shared/orders");
-        assert_eq!(read.subscriptions, vec![held]);
+        assert_eq!(read.event_subscriptions, vec![held]);
+        assert_eq!(read.subscriptions, vec![routed]);
+        assert_eq!(read.snapshot().event_subscriptions().count(), 1);
         assert_eq!(read.snapshot().subscriptions().count(), 1);
         let bare = Publication::whole("n", "xmip:///n", &Snapshot::new()).to_toml();
         assert!(
