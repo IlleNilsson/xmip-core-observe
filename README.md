@@ -61,6 +61,12 @@ scopes first (ADR-0052, amendment 2026-09-19). It moved here from
 `Xmip.Surface`'s `ScopePattern` on 2026-09-29, when the audit read needed it
 in Rust; the runtime forwards it as `xmip_scope_matches_v1`.
 
+Whether something a run made is shown is `run::shown`: always where the run
+declared nothing, and where `Run::hidden` says it declared itself hidden only
+when the reader asks to include what is hidden. The audit capability's query
+applies it to records, and the runtime forwards it as `xmip_run_shown_v1` for
+every other surface (ADR-0028, amendment 2026-09-30).
+
 A record is stamped by `observe::now_unix_nanos`: the estate's one clock,
 `xcore::SystemClock`, in the unit a record and `xmip_operate.h` carry —
 nanoseconds since the Unix epoch as an `i64`.
