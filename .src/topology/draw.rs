@@ -211,10 +211,11 @@ pub fn stages(snapshot: &Snapshot, name: &str, scope: &str) -> Vec<TopologyNode>
 }
 
 /// What the node published at `<scope>/capability`: what it declared it can
-/// do. Nothing published is nothing declared — the node has yet to say, and
-/// only what it reports is drawn. A record naming a word that is no
-/// capability is refused and draws no declared stage either; the record
-/// itself stays on the node's `capability` scope in the publisher's words.
+/// do, its roles saying which stages it serves. Nothing published is
+/// nothing declared — the node has yet to say, and only what it reports is
+/// drawn. A record naming a word that is no role is refused and draws no
+/// declared stage either; the record itself stays on the node's `capability`
+/// scope in the publisher's words.
 fn declared(snapshot: &Snapshot, scope: &str) -> Capability {
     let at = crate::capability::scope(scope);
     snapshot
@@ -270,6 +271,7 @@ fn part(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use node::NodeRole;
 
     fn record(scope: &str, health: Health, evidence: &str) -> HealthRecord {
         HealthRecord {
@@ -286,7 +288,7 @@ mod tests {
         let root = "xmip:///C1";
         let scope = "xmip:///C1/node/alpha";
         let mut snapshot = Snapshot::new();
-        let declares = Capability::of(&[Stage::Receive, Stage::Process]).evidence();
+        let declares = Capability::of(&[NodeRole::Receiving, NodeRole::Processing]).evidence();
         for (leaf, health, evidence) in [
             ("capability", Health::Fine, declares.as_str()),
             ("system-process", Health::Fine, "alive: pid 7"),

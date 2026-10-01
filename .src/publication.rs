@@ -548,7 +548,7 @@ mod tests {
         let run = Run {
             cluster: "C1".to_string(),
             nodes: vec!["alpha".to_string()],
-            capabilities: vec!["alpha=receive".to_string()],
+            roles: vec!["alpha=receiving".to_string()],
             ..Run::default()
         };
         let topology = Topology {

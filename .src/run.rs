@@ -23,11 +23,11 @@ pub struct Run {
     /// The nodes spawned, one process each; empty when there are none.
     #[serde(default)]
     pub nodes: Vec<String>,
-    /// What each node was started with, as `node::Capability::entry` writes
-    /// it: `alpha=receive+send`, or the bare name of a node that declared no
-    /// stage (ADR-0056).
+    /// The roles each node was started with, as `node::Capability::entry`
+    /// writes them: `alpha=receiving+sending`, or the bare name of a node
+    /// that declared no role (ADR-0056, amendment 2026-10-01).
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub roles: Vec<String>,
     /// The nodes among them that may assume the internet (ADR-0045).
     #[serde(default)]
     pub online: Vec<String>,
@@ -60,7 +60,7 @@ pub const fn shown(hidden: bool, including_hidden: bool) -> bool {
 pub enum RunList {
     Tests,
     Nodes,
-    Capabilities,
+    Roles,
     Online,
 }
 
@@ -69,7 +69,7 @@ impl RunList {
     pub const ALL: [RunList; 4] = [
         RunList::Tests,
         RunList::Nodes,
-        RunList::Capabilities,
+        RunList::Roles,
         RunList::Online,
     ];
 }
@@ -88,7 +88,7 @@ impl Run {
         match which {
             RunList::Tests => &self.tests,
             RunList::Nodes => &self.nodes,
-            RunList::Capabilities => &self.capabilities,
+            RunList::Roles => &self.roles,
             RunList::Online => &self.online,
         }
     }
