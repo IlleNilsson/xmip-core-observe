@@ -1,5 +1,6 @@
-//! Where a node publishes what it declares it can do: one health record at
-//! `<node>/capability`, its evidence the declaration (ADR-0056 clause 1).
+//! Where a node publishes what it declares: one health record at
+//! `<node>/capability`, its evidence the declaration — its roles and its
+//! online capability (ADR-0056 clause 1, amendment 2026-10-01).
 //!
 //! The declaration and its evidence are `node::Capability`'s; where it sits
 //! in the snapshot is the snapshot's, and is said here once. A publisher
@@ -28,7 +29,7 @@ pub fn scope(node_scope: &str) -> String {
 /// # Errors
 ///
 /// The inner result is the REFUSED sentence when the evidence names a word
-/// that is no stage (ADR-0055); the record is still a capability record.
+/// that is no role (ADR-0055); the record is still a capability record.
 #[must_use]
 pub fn declared<'a>(
     record_scope: &'a str,
@@ -44,17 +45,17 @@ pub fn declared<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use node::Stage;
+    use node::NodeRole;
 
     #[test]
     fn a_node_publishes_beneath_itself_and_reads_back_by_the_same_place() {
         let at = scope("xmip:///C1/node/alpha");
         assert_eq!(at, "xmip:///C1/node/alpha/capability");
 
-        let evidence = Capability::of(&[Stage::Receive]).evidence();
+        let evidence = Capability::of(&[NodeRole::Receiving]).evidence();
         let (node, said) = declared(&at, &evidence).expect("a capability record");
         assert_eq!(node, "alpha");
-        assert_eq!(said, Ok(Capability::of(&[Stage::Receive])));
+        assert_eq!(said, Ok(Capability::of(&[NodeRole::Receiving])));
     }
 
     #[test]
