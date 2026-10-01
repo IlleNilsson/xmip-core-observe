@@ -3,8 +3,9 @@
 //! 2026-09-14, ruling 3).
 //!
 //! The model and its words are written here once. A publisher builds a
-//! [`Topology`] — the Playground draws its cluster's from what its nodes
-//! reported — and [`crate::publication`] writes and reads it; a surface gets
+//! [`Topology`] — drawn from what its nodes reported by [`draw`] and
+//! [`party`], the one drawing the Playground's roll and a running node both
+//! call — and [`crate::publication`] writes and reads it; a surface gets
 //! it through the runtime's reader (`xmip_operate.h` section 8) as the
 //! header's values, never as the words. Until 2026-09-24 the Playground held
 //! this model and `Xmip.Surface` parsed its words again (open problem 25).
@@ -16,6 +17,9 @@
 //! A word a reader does not know reads as the kind's fallback — a computer,
 //! both origins, a send-receive exchange — so an unfamiliar publication still
 //! draws, and the one reader decides that once.
+
+pub mod draw;
+pub mod party;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
