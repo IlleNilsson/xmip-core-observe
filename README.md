@@ -23,7 +23,16 @@ reader sums what is beneath any scope — a roll's file and a node's alike) and 
 it back, with the records, the counts, what the run was started with (`Run`)
 and the communication topology (`topology`: its nodes, links and their
 words, each value's `word` and the `name` a person reads it by, and a link's rate over two readings, `Topology::rate_since`, which the
-publisher states and no surface computes). A node's throughput over time is `Curve`, the history file, and the
+publisher states and no surface computes). `Publication::write` writes
+it whole or not at all, by `publication::write_atomic`, the one writer of
+every file a surface reads a publisher's state from. The topology is drawn
+here too, once for every publisher (ADR-0052, amendment 2026-09-30):
+`topology::draw` draws a cluster, its nodes, their declared or reported
+stages and an endpoint per segment beneath a stage, each Fine or Holding
+over its worst leaf; `topology::party` adds the Party on each side a stage
+faces, linked with what the stage counted. The Playground's roll and a
+running node (the runtime's `Running::publication`, which `xmip-service`
+writes) both draw through them. A node's throughput over time is `Curve`, the history file, and the
 recent items beneath a scope are `Recent`, the activity file; each is
 written and read here, as a publication is. What a reader does not know it
 decides here once — an unknown mood

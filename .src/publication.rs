@@ -6,11 +6,16 @@
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
 //! and a roll's `[run]` and `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
-//! 2026-09-24 (open problem 25). It has one home now: the Playground writes
-//! through [`Publication::to_toml`], reads its nodes' files back through
-//! [`Publication::read`], and a surface reads through the same function in
-//! the runtime's library (`xmip_publication_read_v1`, `xmip_operate.h`
-//! section 8).
+//! 2026-09-24 (open problem 25). It has one home now: a publisher — the
+//! Playground, `xmip-service` — writes through [`Publication::write`], the
+//! Playground reads its nodes' files back through [`Publication::read`], and
+//! a surface reads through the same function in the runtime's library
+//! (`xmip_publication_read_v1`, `xmip_operate.h` section 8).
+//!
+//! **Written whole or not at all** ([`write_atomic`]): a reader sees the
+//! previous file or the next, never a torn one. The Playground wrote it so
+//! alone until 2026-09-30, when `xmip-service` began to publish too
+//! (ADR-0018, amendment 2026-09-30).
 //!
 //! **TOML, not JSON.** On disk the estate is TOML — the owner's rule; JSON is
 //! reserved for what lives in memory or on the wire.
@@ -20,6 +25,9 @@
 //! is skipped, because a count of it is no count of anything the reader
 //! knows; a topology word falls back as [`crate::topology`] says. A file that
 //! is not this shape at all is refused whole.
+
+use std::io::{self, Write};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +147,16 @@ impl Publication {
         toml::to_string(&document).unwrap_or_default()
     }
 
+    /// The publication written to `path` as [`Publication::to_toml`] says
+    /// it, whole or not at all ([`write_atomic`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`write_atomic`]'s.
+    pub fn write(&self, path: &Path) -> io::Result<()> {
+        write_atomic(path, &self.to_toml())
+    }
+
     /// A publication read back from its TOML. Counts are dated by the newest
     /// record, which is when the publisher last looked.
     ///
@@ -225,6 +243,35 @@ impl Publication {
         }
         snapshot
     }
+}
+
+/// Write `contents` to `path` atomically: a sibling temporary file of this
+/// process's own, flushed to the device, then a rename over the target. A
+/// reader either sees the previous file or this one, never a torn write —
+/// and never an empty one: the rename is journaled and the data is not, so
+/// a hard stop between the write and the flush left a snapshot, a history
+/// and an activity file of the right length and nothing but zeros in them,
+/// and the prompt said unavailable for two days (2026-09-16). Every file a
+/// surface reads a publisher's state from is written this way — the
+/// publication, and the Playground's history and activity beside it.
+///
+/// # Errors
+///
+/// Where the parent could not be created, or the file could not be written,
+/// flushed or renamed.
+pub fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Its own temporary file: two processes publishing to one path must not
+    // write into each other's half-finished file.
+    let temp = path.with_extension(format!("toml.writing-{}", std::process::id()));
+    let mut file = std::fs::File::create(&temp)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&temp, path)
 }
 
 /// The file, as it lies.
@@ -471,6 +518,29 @@ mod tests {
             !bare.contains("orders") && !bare.contains("subscriptions"),
             "{bare}"
         );
+    }
+
+    #[test]
+    fn a_publication_is_written_whole_and_reads_back() {
+        let path = std::env::temp_dir()
+            .join(format!("xmip-publication-{}", std::process::id()))
+            .join("snapshot.toml");
+        std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+
+        let written = Publication::whole("n", "xmip:///n", &published()).with_orders("orders");
+        written.write(&path).expect("written");
+
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(text, written.to_toml());
+        assert_eq!(
+            Publication::read(&text).map(|read| read.orders),
+            Ok("orders".into())
+        );
+        let beside: Vec<_> = std::fs::read_dir(path.parent().expect("parent"))
+            .expect("listed")
+            .collect();
+        assert_eq!(beside.len(), 1, "no temporary file is left behind");
+        std::fs::remove_dir_all(path.parent().expect("parent")).ok();
     }
 
     #[test]
