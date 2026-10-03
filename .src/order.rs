@@ -77,7 +77,11 @@ pub enum Noun {
 
 impl Noun {
     /// Every noun an order names.
-    pub const ALL: [Self; 3] = [Self::EventSubscription, Self::Subscription, Self::DeadMessage];
+    pub const ALL: [Self; 3] = [
+        Self::EventSubscription,
+        Self::Subscription,
+        Self::DeadMessage,
+    ];
 
     /// The word an order names it by.
     #[must_use]
