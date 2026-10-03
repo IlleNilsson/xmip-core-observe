@@ -21,7 +21,13 @@ node = { package = "xmip-core-node", git = "https://github.com/IlleNilsson/xmip-
 # A publication is a TOML file (on disk the estate is TOML); serde derives
 # its shape and toml writes and reads it, here and nowhere else.
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+# RFC 3339, how an unheard member's time is said: codec's one writer.
+codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
+toml = "1"
+
+[dev-dependencies]
+# The test cluster's names, from its `xmip.toml` (`configure::fixture`).
+configure = { package = "xmip-core-configure", git = "https://github.com/IlleNilsson/xmip-core-configure", branch = "main", features = ["test-support"] }
 
 [profile.dev.package."*"]
 opt-level = 3

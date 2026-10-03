@@ -2,11 +2,13 @@
 //! reaches through its publication only (ADR-0065, amendment 2026-09-29;
 //! ADR-0013, amendment 2026-09-30).
 //!
-//! Two things an operator acts on are published by a node: its Event
-//! subscriptions and its Subscriptions ([`Noun`]). The acts and their words
-//! are written here once ([`Act`]), with which acts each takes: an Event
-//! subscription is paused, resumed or removed; a Subscription is paused or
-//! resumed only, since it is added and removed in the TOML configuration.
+//! Three things an operator acts on are published by a node: its Event
+//! subscriptions, its Subscriptions and the Messages its Dead Message Queue
+//! keeps ([`Noun`]). The acts and their words are written here once
+//! ([`Act`]), with which acts each takes: an Event subscription is paused,
+//! resumed or removed; a Subscription is paused or resumed only, since it is
+//! added and removed in the TOML configuration; a Message in the Dead
+//! Message Queue is replayed (ADR-0052, amendment 2026-10-01).
 //!
 //! A surface reading a live node applies an act through the runtime's
 //! library, in the node's own process. A surface reading a snapshot touches
@@ -35,11 +37,14 @@ pub enum Act {
     Resume,
     /// Unsubscribe an Event subscription. No Subscription takes it.
     Remove,
+    /// Route a Message of the Dead Message Queue again, against the
+    /// Subscriptions of now.
+    Replay,
 }
 
 impl Act {
     /// Every act, in the order a surface offers them.
-    pub const ALL: [Self; 3] = [Self::Pause, Self::Resume, Self::Remove];
+    pub const ALL: [Self; 4] = [Self::Pause, Self::Resume, Self::Remove, Self::Replay];
 
     /// The word the estate names the act by.
     #[must_use]
@@ -48,6 +53,7 @@ impl Act {
             Self::Pause => "pause",
             Self::Resume => "resume",
             Self::Remove => "remove",
+            Self::Replay => "replay",
         }
     }
 
@@ -65,11 +71,13 @@ pub enum Noun {
     EventSubscription,
     /// A Subscription, by its configured name on its node.
     Subscription,
+    /// A Message in its node's Dead Message Queue, by its identifier.
+    DeadMessage,
 }
 
 impl Noun {
     /// Every noun an order names.
-    pub const ALL: [Self; 2] = [Self::EventSubscription, Self::Subscription];
+    pub const ALL: [Self; 3] = [Self::EventSubscription, Self::Subscription, Self::DeadMessage];
 
     /// The word an order names it by.
     #[must_use]
@@ -77,6 +85,7 @@ impl Noun {
         match self {
             Self::EventSubscription => "event-subscription",
             Self::Subscription => "subscription",
+            Self::DeadMessage => "dead-message",
         }
     }
 
@@ -90,8 +99,9 @@ impl Noun {
     #[must_use]
     pub const fn acts(self) -> &'static [Act] {
         match self {
-            Self::EventSubscription => &Act::ALL,
+            Self::EventSubscription => &[Act::Pause, Act::Resume, Act::Remove],
             Self::Subscription => &[Act::Pause, Act::Resume],
+            Self::DeadMessage => &[Act::Replay],
         }
     }
 
@@ -106,7 +116,7 @@ impl Noun {
         let words: Vec<&str> = self.acts().iter().map(|act| act.word()).collect();
         match Act::named(word) {
             Some(act) if self.acts().contains(&act) => Ok(act),
-            Some(Act::Remove) => Err(
+            Some(Act::Remove) if self == Self::Subscription => Err(
                 "REFUSED: a Subscription is not removed by an act; it is added and removed \
                  in the TOML configuration of the Xmip Application that draws it"
                     .to_string(),
@@ -125,6 +135,7 @@ impl Noun {
         let noun = match self {
             Self::EventSubscription => "event",
             Self::Subscription => "subscription",
+            Self::DeadMessage => "dead-message",
         };
         format!("{noun}.{}", act.word())
     }
@@ -135,6 +146,7 @@ impl Noun {
         match self {
             Self::EventSubscription => "an Event subscription",
             Self::Subscription => "a Subscription",
+            Self::DeadMessage => "a Message in the Dead Message Queue",
         }
     }
 }
@@ -259,6 +271,7 @@ fn failed(path: &Path, error: &std::io::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
 
     fn orders(name: &str) -> PathBuf {
         let at = std::env::temp_dir().join(format!("xmip-order-{name}-{}", std::process::id()));
@@ -266,9 +279,14 @@ mod tests {
         at
     }
 
+    /// The node an order is for: the test cluster's first.
+    fn node() -> String {
+        test_cluster().node_scope(0)
+    }
+
     fn order(noun: Noun, target: &str, act: Act) -> Order {
         Order {
-            node: "xmip:///CT/node/beta".to_string(),
+            node: node(),
             noun,
             target: target.to_string(),
             act,
@@ -290,6 +308,12 @@ mod tests {
         assert!(sulk.contains("the acts are pause, resume"), "{sulk}");
         assert_eq!(Noun::Subscription.action(Act::Pause), "subscription.pause");
         assert_eq!(Noun::EventSubscription.action(Act::Remove), "event.remove");
+        assert_eq!(Noun::DeadMessage.act("replay"), Ok(Act::Replay));
+        assert_eq!(Noun::DeadMessage.action(Act::Replay), "dead-message.replay");
+        let paused = Noun::DeadMessage.act("pause").expect_err("refused");
+        assert!(paused.contains("the acts are replay"), "{paused}");
+        assert!(Noun::Subscription.act("replay").is_err());
+        assert!(Noun::EventSubscription.act("replay").is_err());
     }
 
     #[test]
@@ -300,13 +324,13 @@ mod tests {
         pause.leave(&at).expect("left");
         resume.leave(&at).expect("left");
 
-        assert!(Order::take(&at, "xmip:///CT/node/gamma").is_empty());
-        let taken: Vec<Order> = Order::take(&at, "xmip:///CT/node/beta")
+        assert!(Order::take(&at, &test_cluster().node_scope(1)).is_empty());
+        let taken: Vec<Order> = Order::take(&at, &node())
             .into_iter()
             .collect::<Result<_, _>>()
             .expect("orders");
         assert_eq!(taken, vec![pause, resume], "oldest first");
-        assert!(Order::take(&at, "xmip:///CT/node/beta").is_empty());
+        assert!(Order::take(&at, &node()).is_empty());
         let _ = fs::remove_dir_all(&at);
     }
 
@@ -316,15 +340,19 @@ mod tests {
         let removed = order(Noun::Subscription, "structured", Act::Remove).leave(&at);
         assert!(removed.is_err_and(|said| said.contains("TOML configuration")));
 
-        let place = at.join("beta");
+        let cluster = test_cluster();
+        let place = at.join(&cluster.node(0).name);
         fs::create_dir_all(&place).expect("made");
         fs::write(
             place.join("1-1-remove.toml"),
-            "node = \"n\"\nnoun = \"subscription\"\ntarget = \"t\"\nact = \"remove\"\n\
-             who = \"w\"\n",
+            format!(
+                "node = \"{}\"\nnoun = \"subscription\"\ntarget = \"t\"\nact = \"remove\"\n\
+                 who = \"w\"\n",
+                node()
+            ),
         )
         .expect("written");
-        let taken = Order::take(&at, "xmip:///CT/node/beta");
+        let taken = Order::take(&at, &node());
         assert_eq!(taken.len(), 1);
         assert!(
             taken[0]
@@ -333,7 +361,7 @@ mod tests {
         );
 
         let nowhere = Order {
-            node: "xmip:///CT".to_string(),
+            node: cluster.scope(),
             ..order(Noun::EventSubscription, "1", Act::Remove)
         };
         assert!(

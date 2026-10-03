@@ -123,6 +123,7 @@ impl Default for Activity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
 
     fn item(kind: ItemKind, scope: &str, id: &str, now: i64) -> Item {
         Item {
@@ -135,20 +136,29 @@ mod tests {
         }
     }
 
+    /// The test cluster's first node, and `leaf` beneath it.
+    fn node() -> String {
+        test_cluster().node_scope(0)
+    }
+
+    fn at(leaf: &str) -> String {
+        format!("{}/{leaf}", node())
+    }
+
     #[test]
     fn recent_returns_items_beneath_a_scope_newest_first() {
         let mut activity = Activity::default();
-        activity.record(item(ItemKind::Stream, "xmip:///n/receive/a", "s1", 1));
-        activity.record(item(ItemKind::Message, "xmip:///n/send/b", "m1", 2));
-        activity.record(item(ItemKind::Stream, "xmip:///n/receive/a", "s2", 3));
+        activity.record(item(ItemKind::Stream, &at("receive/a"), "s1", 1));
+        activity.record(item(ItemKind::Message, &at("send/b"), "m1", 2));
+        activity.record(item(ItemKind::Stream, &at("receive/a"), "s2", 3));
 
-        let at_a = activity.recent("xmip:///n/receive/a", None, 10);
+        let at_a = activity.recent(&at("receive/a"), None, 10);
         assert_eq!(at_a.len(), 2);
         assert_eq!(at_a[0].id, "s2", "newest first");
         assert_eq!(at_a[1].id, "s1");
 
         assert_eq!(
-            activity.recent("xmip:///n", None, 10).len(),
+            activity.recent(&node(), None, 10).len(),
             3,
             "beneath the node"
         );
@@ -157,10 +167,10 @@ mod tests {
     #[test]
     fn recent_filters_by_kind() {
         let mut activity = Activity::default();
-        activity.record(item(ItemKind::Stream, "xmip:///n/x", "s1", 1));
-        activity.record(item(ItemKind::Message, "xmip:///n/x", "m1", 2));
+        activity.record(item(ItemKind::Stream, &at("x"), "s1", 1));
+        activity.record(item(ItemKind::Message, &at("x"), "m1", 2));
 
-        let messages = activity.recent("xmip:///n", Some(ItemKind::Message), 10);
+        let messages = activity.recent(&node(), Some(ItemKind::Message), 10);
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].kind, ItemKind::Message);
     }
@@ -168,27 +178,24 @@ mod tests {
     #[test]
     fn recent_honours_the_limit() {
         let mut activity = Activity::default();
+        let x = at("x");
         for tick in 0..5 {
-            activity.record(item(ItemKind::Stream, "xmip:///n/x", "s", tick));
+            activity.record(item(ItemKind::Stream, &x, "s", tick));
         }
 
-        assert_eq!(activity.recent("xmip:///n", None, 2).len(), 2);
+        assert_eq!(activity.recent(&node(), None, 2).len(), 2);
     }
 
     #[test]
     fn the_ring_is_bounded_and_drops_the_oldest() {
         let mut activity = Activity::with_capacity(2);
+        let x = at("x");
         for tick in 0..5 {
-            activity.record(item(
-                ItemKind::Stream,
-                "xmip:///n/x",
-                &format!("s{tick}"),
-                tick,
-            ));
+            activity.record(item(ItemKind::Stream, &x, &format!("s{tick}"), tick));
         }
 
         assert_eq!(activity.len(), 2);
-        let held = activity.recent("xmip:///n", None, 10);
+        let held = activity.recent(&node(), None, 10);
         assert_eq!(held[0].id, "s4");
         assert_eq!(held[1].id, "s3");
     }
@@ -196,8 +203,9 @@ mod tests {
     #[test]
     fn an_unrelated_scope_has_nothing() {
         let mut activity = Activity::default();
-        activity.record(item(ItemKind::Stream, "xmip:///n/x", "s1", 1));
+        activity.record(item(ItemKind::Stream, &at("x"), "s1", 1));
 
-        assert!(activity.recent("xmip:///other", None, 10).is_empty());
+        let other = format!("xmip:///{}", test_cluster().other());
+        assert!(activity.recent(&other, None, 10).is_empty());
     }
 }

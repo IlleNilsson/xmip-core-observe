@@ -112,6 +112,7 @@ struct ItemDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
 
     fn item(kind: ItemKind, scope: &str, id: &str) -> Item {
         Item {
@@ -127,11 +128,13 @@ mod tests {
     #[test]
     fn the_newest_items_beneath_a_node_cross_the_file_whole() {
         let mut activity = Activity::default();
-        activity.record(item(ItemKind::Stream, "xmip:///n/receive/tcp", "s1"));
-        activity.record(item(ItemKind::Journey, "xmip:///n/process/p", "j1"));
-        activity.record(item(ItemKind::Message, "xmip:///m/send/tcp", "m1"));
+        let cluster = test_cluster();
+        let (node, other) = (cluster.node_scope(0), cluster.node_scope(1));
+        activity.record(item(ItemKind::Stream, &format!("{node}/receive/tcp"), "s1"));
+        activity.record(item(ItemKind::Journey, &format!("{node}/process/p"), "j1"));
+        activity.record(item(ItemKind::Message, &format!("{other}/send/tcp"), "m1"));
 
-        let recent = Recent::of("xmip:///n", &activity);
+        let recent = Recent::of(&node, &activity);
         assert_eq!(recent.items.len(), 2, "only what is beneath the node");
         assert_eq!(recent.items[0].id, "j1", "newest first");
 

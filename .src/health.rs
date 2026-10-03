@@ -168,6 +168,13 @@ impl Standing<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
+
+    /// `leaf` beneath the test cluster's first node: scopes that order as
+    /// their leaves do.
+    fn at(leaf: &str) -> String {
+        format!("{}/{leaf}", test_cluster().node_scope(0))
+    }
 
     fn standing(health: Health, severity: u8, scope: &str) -> Standing<'_> {
         Standing {
@@ -244,8 +251,9 @@ mod tests {
 
     #[test]
     fn the_worse_mood_stands_first_whatever_the_severity() {
-        let done = standing(Health::Done, 10, "xmip:///b");
-        let stressed = standing(Health::Stressed, 99, "xmip:///a");
+        let (a, b) = (at("a"), at("b"));
+        let done = standing(Health::Done, 10, &b);
+        let stressed = standing(Health::Stressed, 99, &a);
 
         assert_eq!(done.cmp(&stressed), Ordering::Less);
         assert_eq!(stressed.cmp(&done), Ordering::Greater);
@@ -253,10 +261,11 @@ mod tests {
 
     #[test]
     fn within_a_mood_the_more_severe_then_the_first_scope_stands_first() {
-        let severe = standing(Health::Done, 90, "xmip:///z");
-        let mild = standing(Health::Done, 60, "xmip:///a");
-        let first = standing(Health::Done, 60, "xmip:///a");
-        let second = standing(Health::Done, 60, "xmip:///b");
+        let (a, b, z) = (at("a"), at("b"), at("z"));
+        let severe = standing(Health::Done, 90, &z);
+        let mild = standing(Health::Done, 60, &a);
+        let first = standing(Health::Done, 60, &a);
+        let second = standing(Health::Done, 60, &b);
 
         assert_eq!(severe.cmp(&mild), Ordering::Less);
         assert_eq!(first.cmp(&second), Ordering::Less);
@@ -265,12 +274,13 @@ mod tests {
 
     #[test]
     fn many_are_ordered_worst_first_by_position_and_equals_keep_theirs() {
+        let (a, d, e, h) = (at("a"), at("d"), at("e"), at("h"));
         let records = [
-            standing(Health::Fine, 0, "xmip:///a"),
-            standing(Health::Done, 60, "xmip:///d"),
-            standing(Health::Holding, 0, "xmip:///h"),
-            standing(Health::Fine, 0, "xmip:///a"),
-            standing(Health::Done, 90, "xmip:///e"),
+            standing(Health::Fine, 0, &a),
+            standing(Health::Done, 60, &d),
+            standing(Health::Holding, 0, &h),
+            standing(Health::Fine, 0, &a),
+            standing(Health::Done, 90, &e),
         ];
 
         assert_eq!(Standing::worst_first(&records), [2, 4, 1, 0, 3]);
@@ -279,24 +289,19 @@ mod tests {
 
     #[test]
     fn a_sort_puts_the_worst_first() {
+        let (a, d, e, h, p) = (at("a"), at("d"), at("e"), at("h"), at("p"));
         let mut records = [
-            standing(Health::Fine, 0, "xmip:///a"),
-            standing(Health::Holding, 0, "xmip:///h"),
-            standing(Health::Done, 60, "xmip:///d"),
-            standing(Health::Done, 90, "xmip:///e"),
-            standing(Health::Paused, 30, "xmip:///p"),
+            standing(Health::Fine, 0, &a),
+            standing(Health::Holding, 0, &h),
+            standing(Health::Done, 60, &d),
+            standing(Health::Done, 90, &e),
+            standing(Health::Paused, 30, &p),
         ];
         records.sort();
 
         assert_eq!(
             records.map(|record| record.scope),
-            [
-                "xmip:///h",
-                "xmip:///e",
-                "xmip:///d",
-                "xmip:///p",
-                "xmip:///a"
-            ]
+            [&h, &e, &d, &p, &a].map(String::as_str)
         );
     }
 }

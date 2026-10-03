@@ -47,11 +47,17 @@ it holds; ADR-0013, amendment 2026-09-30), kept by node and name
 (`Snapshot::record_subscription`), and the Event subscriptions its nodes'
 hubs hold (`EventSubscription`; ADR-0065, amendment 2026-09-29), kept by node
 and number (`Snapshot::record_event_subscription`). Both say active or
-paused in `PauseState`'s words. `orders` is the directory where its
-publisher takes an operator's act on either: `Order` writes and takes the
-file, `Act` names pause, resume and remove once, and `Noun` says which acts
-each takes — an Event subscription all three, a Subscription pause and
-resume only, since it is added and removed in the TOML configuration.
+paused in `PauseState`'s words. It carries too the oldest Messages each
+node's Dead Message Queue keeps (`DeadMessage`: node, Message, place, Receive
+Location, time, gate verdicts, promoted properties and every Subscription's
+decline; ADR-0052, amendment 2026-10-01), kept by node and place
+(`Snapshot::record_dead_message`), as `[[dead_messages]]`. `orders` is the
+directory where its publisher takes an operator's act on any of them:
+`Order` writes and takes the file, `Act` names pause, resume, remove and
+replay once, and `Noun` says which acts each takes — an Event subscription
+pause, resume and remove, a Subscription pause and resume only, since it is
+added and removed in the TOML configuration, and a Message in the Dead
+Message Queue (`dead-message`) replay only.
 
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
 `Scope` reads one — the scheme and the authority go, a slash at either end

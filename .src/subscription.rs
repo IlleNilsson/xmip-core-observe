@@ -115,11 +115,12 @@ impl SubscriptionDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
 
     #[test]
     fn a_subscription_reads_back_as_written() {
         let written = Subscription {
-            node: "xmip:///CT/node/beta".to_string(),
+            node: test_cluster().node_scope(0),
             name: "structured".to_string(),
             state: PauseState::Paused,
             by: "ilian".to_string(),

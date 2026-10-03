@@ -15,6 +15,7 @@ pub mod activity;
 pub mod capability;
 pub mod counted;
 pub mod curve;
+pub mod dead_message;
 pub mod event_subscription;
 pub mod figure;
 pub mod health;
@@ -28,11 +29,13 @@ pub mod scope;
 pub mod snapshot;
 pub mod subscription;
 pub mod topology;
+pub mod unheard;
 pub mod wildcard;
 
 pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
 pub use counted::Counted;
 pub use curve::Curve;
+pub use dead_message::DeadMessage;
 pub use event_subscription::EventSubscription;
 pub use figure::{FIGURES, Figure, Kind, Point, Points, Reading};
 pub use health::{Health, Standing};
@@ -46,6 +49,7 @@ pub use scope::Scope;
 pub use snapshot::{Count, HealthRecord, Snapshot};
 pub use subscription::Subscription;
 pub use topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
+pub use unheard::Unheard;
 
 use xcore::{Clock, SystemClock};
 

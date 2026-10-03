@@ -45,31 +45,39 @@ pub fn declared<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
     use node::NodeRole;
 
     #[test]
     fn a_node_publishes_beneath_itself_and_reads_back_by_the_same_place() {
-        let at = scope("xmip:///C1/node/alpha");
-        assert_eq!(at, "xmip:///C1/node/alpha/capability");
+        let cluster = test_cluster();
+        let receiving = cluster.with_role("receiving");
+        let place = format!("{}/node/{}", cluster.scope(), receiving.name);
+        let at = scope(&place);
+        assert_eq!(at, format!("{place}/capability"));
 
         let evidence = Capability::of(&[NodeRole::Receiving]).evidence();
         let (node, said) = declared(&at, &evidence).expect("a capability record");
-        assert_eq!(node, "alpha");
+        assert_eq!(node, receiving.name);
         assert_eq!(said, Ok(Capability::of(&[NodeRole::Receiving])));
     }
 
     #[test]
     fn any_other_record_is_no_declaration() {
-        assert!(declared("xmip:///C1/node/alpha/receive/tcp", "declares send").is_none());
-        assert!(declared("xmip:///capability", "declares send").is_none());
+        let stage = format!("{}/receive/tcp", test_cluster().node_scope(0));
+        assert!(declared(&stage, "declares send").is_none());
+        // The leaf alone, at the root, sits beneath no node.
+        assert!(declared(&format!("xmip:///{LEAF}"), "declares send").is_none());
         assert!(declared("", "").is_none());
     }
 
     #[test]
     fn a_refused_declaration_is_still_the_nodes() {
-        let (node, said) =
-            declared("xmip:///n/edge-01/capability", "declares relay; offline;").expect("one");
-        assert_eq!(node, "edge-01");
+        let cluster = test_cluster();
+        let name = &cluster.node(0).name;
+        let at = format!("{}/{name}/capability", cluster.scope());
+        let (node, said) = declared(&at, "declares relay; offline;").expect("one");
+        assert_eq!(node, name.as_str());
         assert!(said.expect_err("refused").starts_with("REFUSED"));
     }
 }
