@@ -24,7 +24,7 @@ pub struct Run {
     #[serde(default)]
     pub nodes: Vec<String>,
     /// The roles each node was started with, as `node::Capability::entry`
-    /// writes them: `alpha=receiving+sending`, or the bare name of a node
+    /// writes them: `<node>=receiving+sending`, or the bare name of a node
     /// that declared no role (ADR-0056, amendment 2026-10-01).
     #[serde(default)]
     pub roles: Vec<String>,
@@ -98,15 +98,17 @@ impl Run {
 mod tests {
     use super::*;
     use crate::{Publication, Snapshot};
+    use configure::fixture::test_cluster;
 
     #[test]
     fn a_hidden_run_is_shown_only_when_asked_and_an_undeclared_one_always() {
         assert!(shown(false, false) && shown(false, true));
         assert!(!shown(true, false) && shown(true, true));
 
-        // Nothing is read out of a name: CT that declared nothing is shown.
+        // Nothing is read out of a name: a cluster that declared nothing is
+        // shown, whatever it is called.
         let named = Run {
-            cluster: "CT".to_string(),
+            cluster: test_cluster().name,
             ..Run::default()
         };
         assert!(named.shown(false));
@@ -119,13 +121,14 @@ mod tests {
 
     #[test]
     fn a_hidden_run_says_so_under_its_run_and_a_shown_one_says_nothing() {
+        let cluster = test_cluster();
         let publish = |run: &Run| {
-            Publication::whole("roll", "xmip:///CT", &Snapshot::new())
+            Publication::whole("roll", &cluster.scope(), &Snapshot::new())
                 .with_run(Some(run.clone()))
                 .to_toml()
         };
         let hidden = Run {
-            cluster: "CT".to_string(),
+            cluster: cluster.name.clone(),
             hidden: true,
             ..Run::default()
         };

@@ -4,7 +4,7 @@
 //! A publisher and its readers are separate processes, and the bridge
 //! between them is a file. Its shape — `source`, `node`, `orders`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
-//! and a roll's `[run]` and `[topology]` — was written by the
+//! `[[unheard]]`, `[[dead_messages]]`, and a roll's `[run]` and `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
 //! Playground, `xmip-service` — writes through [`Publication::write`], the
@@ -32,12 +32,14 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::counted::Counted;
+use crate::dead_message::DeadMessage;
 use crate::event_subscription::{EventSubscription, EventSubscriptionDocument};
 use crate::health::Health;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
 use crate::subscription::{Subscription, SubscriptionDocument};
 use crate::topology::Topology;
+use crate::unheard::{Unheard, UnheardDocument};
 
 /// One publication, read or about to be written.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -60,6 +62,10 @@ pub struct Publication {
     pub subscriptions: Vec<Subscription>,
     /// The Event subscriptions the nodes beneath `node` hold.
     pub event_subscriptions: Vec<EventSubscription>,
+    /// The members the nodes beneath `node` do not hear now.
+    pub unheard: Vec<Unheard>,
+    /// What the Dead Message Queues of the nodes beneath `node` keep.
+    pub dead_messages: Vec<DeadMessage>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -83,6 +89,8 @@ impl Publication {
             counts: snapshot.all_counts().cloned().collect(),
             subscriptions: snapshot.subscriptions().cloned().collect(),
             event_subscriptions: snapshot.event_subscriptions().cloned().collect(),
+            unheard: snapshot.unheard().cloned().collect(),
+            dead_messages: snapshot.dead_messages().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -141,6 +149,8 @@ impl Publication {
                 .iter()
                 .map(EventSubscriptionDocument::of)
                 .collect(),
+            unheard: self.unheard.iter().map(UnheardDocument::of).collect(),
+            dead_messages: self.dead_messages.clone(),
             run: self.run.clone(),
             topology: self.topology.clone(),
         };
@@ -219,6 +229,12 @@ impl Publication {
                 .into_iter()
                 .map(EventSubscriptionDocument::into_event_subscription)
                 .collect(),
+            unheard: document
+                .unheard
+                .into_iter()
+                .map(UnheardDocument::into_unheard)
+                .collect(),
+            dead_messages: document.dead_messages,
             run: document.run,
             topology,
         })
@@ -240,6 +256,12 @@ impl Publication {
         }
         for subscription in &self.event_subscriptions {
             snapshot.record_event_subscription(subscription.clone());
+        }
+        for unheard in &self.unheard {
+            snapshot.record_unheard(unheard.clone());
+        }
+        for dead in &self.dead_messages {
+            snapshot.record_dead_message(dead.clone());
         }
         snapshot
     }
@@ -291,6 +313,10 @@ struct Document {
     subscriptions: Vec<SubscriptionDocument>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     event_subscriptions: Vec<EventSubscriptionDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unheard: Vec<UnheardDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dead_messages: Vec<DeadMessage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -376,6 +402,7 @@ pub(crate) mod mood {
 mod tests {
     use super::*;
     use crate::topology::{NodeKind, TopologyNode};
+    use configure::fixture::test_cluster;
 
     fn record(scope: &str, health: Health, observed: i64) -> HealthRecord {
         HealthRecord {
@@ -398,32 +425,40 @@ mod tests {
         }
     }
 
+    /// The test cluster's first node: the publisher every test here is.
+    fn node() -> String {
+        test_cluster().node_scope(0)
+    }
+
     fn published() -> Snapshot {
+        let node = node();
+        let (a, b) = (format!("{node}/receive/a"), format!("{node}/send/b"));
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(record("xmip:///n/receive/a", Health::Fine, 5));
-        snapshot.record_health(record("xmip:///n/send/b", Health::Done, 9));
-        snapshot.record_count(count("xmip:///n/receive/a", Counted::Streams, 3));
-        snapshot.record_count(count("xmip:///n/send/b", Counted::Messages, 2));
-        snapshot.record_count(count("xmip:///n/send/b", Counted::Bytes, 40));
+        snapshot.record_health(record(&a, Health::Fine, 5));
+        snapshot.record_health(record(&b, Health::Done, 9));
+        snapshot.record_count(count(&a, Counted::Streams, 3));
+        snapshot.record_count(count(&b, Counted::Messages, 2));
+        snapshot.record_count(count(&b, Counted::Bytes, 40));
         snapshot
     }
 
     #[test]
     fn a_count_at_the_publishers_own_scope_is_written_without_one_and_reads_back_there() {
+        let node = node();
         let mut summed = published();
-        summed.record_count(count("xmip:///n", Counted::Bytes, 40));
-        let text = Publication::whole("playground — n", "xmip:///n", &summed).to_toml();
+        summed.record_count(count(&node, Counted::Bytes, 40));
+        let text = Publication::whole("playground", &node, &summed).to_toml();
         assert!(text.contains("state = \"done\""), "{text}");
         assert!(text.contains("counted = \"streams\""), "{text}");
-        assert!(!text.contains("scope = \"xmip:///n\""), "{text}");
+        assert!(!text.contains(&format!("scope = \"{node}\"")), "{text}");
 
         let read = Publication::read(&text).expect("reads");
-        assert_eq!(read.node, "xmip:///n");
-        assert_eq!(read.records, published().health("xmip:///n"));
+        assert_eq!(read.node, node);
+        assert_eq!(read.records, published().health(&node));
         let bytes = read
             .counts
             .iter()
-            .find(|count| count.counted == Counted::Bytes && count.scope == "xmip:///n")
+            .find(|count| count.counted == Counted::Bytes && count.scope == node)
             .expect("bytes at the node itself");
         assert_eq!(bytes.value, 40);
         assert_eq!(bytes.observed_unix_nanos, 9, "dated by the newest record");
@@ -431,32 +466,32 @@ mod tests {
 
     #[test]
     fn a_nodes_own_file_keeps_each_count_where_it_was_recorded() {
-        let written = published();
-        let read = Publication::read(&Publication::whole("n", "xmip:///n", &written).to_toml())
-            .expect("reads");
+        let (node, written) = (node(), published());
+        let read =
+            Publication::read(&Publication::whole("n", &node, &written).to_toml()).expect("reads");
         let snapshot = read.snapshot();
+        let send = format!("{node}/send");
 
-        assert_eq!(snapshot.health("xmip:///n"), written.health("xmip:///n"));
+        assert_eq!(snapshot.health(&node), written.health(&node));
         assert_eq!(
             snapshot
-                .measure("xmip:///n/send", Counted::Messages)
+                .measure(&send, Counted::Messages)
                 .map(|count| count.value),
             Some(2)
         );
-        assert!(
-            snapshot
-                .measure("xmip:///n/send", Counted::Streams)
-                .is_none()
-        );
+        assert!(snapshot.measure(&send, Counted::Streams).is_none());
     }
 
     #[test]
     fn what_a_reader_does_not_know_shows_or_is_skipped_and_a_stranger_is_refused() {
-        let text = "node = \"xmip:///n\"\n\
-                    [[records]]\nscope = \"xmip:///n/a\"\nstate = \"sulking\"\n\
-                    [[counts]]\ncounted = \"throughput\"\nvalue = 9\n\
-                    [[counts]]\ncounted = \"failed\"\nvalue = 1\n";
-        let read = Publication::read(text).expect("reads");
+        let text = format!(
+            "node = \"{node}\"\n\
+             [[records]]\nscope = \"{node}/a\"\nstate = \"sulking\"\n\
+             [[counts]]\ncounted = \"throughput\"\nvalue = 9\n\
+             [[counts]]\ncounted = \"failed\"\nvalue = 1\n",
+            node = node()
+        );
+        let read = Publication::read(&text).expect("reads");
         assert_eq!(read.records[0].health, Health::Stressed);
         assert_eq!(read.counts.len(), 1);
         assert_eq!(read.counts[0].counted, Counted::Failed);
@@ -470,13 +505,14 @@ mod tests {
 
     #[test]
     fn both_kinds_of_subscription_and_where_acts_go_ride_along_each_by_its_own_key() {
+        let cluster = test_cluster();
         let held = EventSubscription {
-            node: "xmip:///C1/node/alpha".to_string(),
+            node: cluster.node_scope(0),
             id: 2,
             subscriber: "operations".to_string(),
             party: "0190a0a0-0000-7000-8000-000000000001".to_string(),
             action: "every Event".to_string(),
-            scope: "xmip:///C1/node/alpha".to_string(),
+            scope: cluster.node_scope(0),
             state: crate::PauseState::Paused,
             queued: 3,
             capacity: 64,
@@ -485,7 +521,7 @@ mod tests {
             since_unix_nanos: 11,
         };
         let routed = Subscription {
-            node: "xmip:///C1/node/beta".to_string(),
+            node: cluster.node_scope(1),
             name: "structured".to_string(),
             application: "RoundTrip".to_string(),
             filter: "MessageType = 'json'".to_string(),
@@ -498,7 +534,7 @@ mod tests {
         snapshot.record_event_subscription(held.clone());
         snapshot.record_event_subscription(held.clone());
         snapshot.record_subscription(routed.clone());
-        let text = Publication::whole("roll", "xmip:///C1", &snapshot)
+        let text = Publication::whole("roll", &cluster.scope(), &snapshot)
             .with_orders("shared/orders")
             .to_toml();
         assert!(text.contains("[[event_subscriptions]]"), "{text}");
@@ -513,7 +549,7 @@ mod tests {
         assert_eq!(read.subscriptions, vec![routed]);
         assert_eq!(read.snapshot().event_subscriptions().count(), 1);
         assert_eq!(read.snapshot().subscriptions().count(), 1);
-        let bare = Publication::whole("n", "xmip:///n", &Snapshot::new()).to_toml();
+        let bare = Publication::whole("n", &node(), &Snapshot::new()).to_toml();
         assert!(
             !bare.contains("orders") && !bare.contains("subscriptions"),
             "{bare}"
@@ -527,7 +563,7 @@ mod tests {
             .join("snapshot.toml");
         std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 
-        let written = Publication::whole("n", "xmip:///n", &published()).with_orders("orders");
+        let written = Publication::whole("n", &node(), &published()).with_orders("orders");
         written.write(&path).expect("written");
 
         let text = std::fs::read_to_string(&path).expect("read");
@@ -545,10 +581,12 @@ mod tests {
 
     #[test]
     fn the_run_and_the_topology_ride_along_and_a_missing_label_is_the_id() {
+        let cluster = test_cluster();
+        let receiving = &cluster.with_role("receiving").name;
         let run = Run {
-            cluster: "C1".to_string(),
-            nodes: vec!["alpha".to_string()],
-            roles: vec!["alpha=receiving".to_string()],
+            cluster: cluster.name.clone(),
+            nodes: vec![receiving.clone()],
+            roles: vec![format!("{receiving}=receiving")],
             ..Run::default()
         };
         let topology = Topology {
@@ -559,7 +597,7 @@ mod tests {
                 parent: String::new(),
                 label: String::new(),
                 kind: NodeKind::Cluster,
-                scope: "xmip:///C1".to_string(),
+                scope: cluster.scope(),
                 state: Health::Fine,
                 origin: crate::topology::Origin::Configured,
                 load: 0.0,
@@ -568,7 +606,7 @@ mod tests {
             }],
             links: Vec::new(),
         };
-        let text = Publication::whole("roll", "xmip:///C1", &Snapshot::new())
+        let text = Publication::whole("roll", &cluster.scope(), &Snapshot::new())
             .with_run(Some(run.clone()))
             .with_topology(Some(topology))
             .to_toml();

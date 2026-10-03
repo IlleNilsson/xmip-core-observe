@@ -271,6 +271,7 @@ fn part(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
     use node::NodeRole;
 
     fn record(scope: &str, health: Health, evidence: &str) -> HealthRecord {
@@ -285,8 +286,12 @@ mod tests {
 
     #[test]
     fn a_node_draws_what_it_declared_and_an_endpoint_per_segment_beneath_a_stage() {
-        let root = "xmip:///C1";
-        let scope = "xmip:///C1/node/alpha";
+        let cluster = test_cluster();
+        let (root, scope, name) = (
+            cluster.scope(),
+            cluster.node_scope(0),
+            cluster.node(0).name.as_str(),
+        );
         let mut snapshot = Snapshot::new();
         let declares = Capability::of(&[NodeRole::Receiving, NodeRole::Processing]).evidence();
         for (leaf, health, evidence) in [
@@ -298,19 +303,21 @@ mod tests {
             snapshot.record_health(record(&format!("{scope}/{leaf}"), health, evidence));
         }
 
-        let drawn = members(&snapshot, root, &["alpha"]);
+        let drawn = members(&snapshot, &root, &[name]);
         let shape: Vec<(&str, &str, &str)> = drawn
             .iter()
             .map(|node| (node.id.as_str(), node.kind.word(), node.parent.as_str()))
             .collect();
+        let (node, receive) = (format!("node/{name}"), format!("node/{name}/receive"));
+        let (endpoint, process) = (format!("{receive}/In"), format!("{node}/process"));
         assert_eq!(
             shape,
             [
                 ("cluster", "cluster", ""),
-                ("node/alpha", "node", "cluster"),
-                ("node/alpha/receive", "stage", "node/alpha"),
-                ("node/alpha/receive/In", "endpoint", "node/alpha/receive"),
-                ("node/alpha/process", "stage", "node/alpha"),
+                (node.as_str(), "node", "cluster"),
+                (receive.as_str(), "stage", node.as_str()),
+                (endpoint.as_str(), "endpoint", receive.as_str()),
+                (process.as_str(), "stage", node.as_str()),
             ]
         );
         assert!((drawn[0].activity - 1.0).abs() < f64::EPSILON, "alive");
@@ -321,9 +328,6 @@ mod tests {
             Origin::Configured,
             "declared, not reported"
         );
-        assert_eq!(
-            system_process(scope),
-            "xmip:///C1/node/alpha/system-process"
-        );
+        assert_eq!(system_process(&scope), format!("{scope}/system-process"));
     }
 }

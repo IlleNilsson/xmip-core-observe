@@ -273,6 +273,7 @@ pub struct TopologyLink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
 
     #[test]
     fn every_word_reads_back_and_an_unknown_one_reads_as_the_fallback() {
@@ -304,10 +305,11 @@ mod tests {
     }
 
     fn link(id: &str, volume: u64) -> TopologyLink {
+        let cluster = test_cluster();
         TopologyLink {
             id: id.to_string(),
-            from: "node/alpha/receive".to_string(),
-            to: "node/beta/process".to_string(),
+            from: format!("node/{}/receive", cluster.with_role("receiving").name),
+            to: format!("node/{}/process", cluster.with_role("processing").name),
             pattern: Pattern::SendReceive,
             origin: Origin::Both,
             protocol: "handoff".to_string(),
@@ -368,12 +370,14 @@ mod tests {
 
     #[test]
     fn a_node_crosses_toml_by_its_words() {
+        let cluster = test_cluster();
+        let name = &cluster.node(0).name;
         let node = TopologyNode {
-            id: "node/alpha".to_string(),
+            id: format!("node/{name}"),
             parent: "cluster".to_string(),
-            label: "alpha".to_string(),
+            label: name.clone(),
             kind: NodeKind::Node,
-            scope: "xmip:///C1/node/alpha".to_string(),
+            scope: cluster.node_scope(0),
             state: Health::Stressed,
             origin: Origin::Configured,
             load: 0.0,

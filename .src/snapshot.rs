@@ -12,10 +12,12 @@
 use std::collections::BTreeMap;
 
 use crate::counted::Counted;
+use crate::dead_message::DeadMessage;
 use crate::event_subscription::EventSubscription;
 use crate::health::{Health, Standing};
 use crate::scope::Scope;
 use crate::subscription::Subscription;
+use crate::unheard::Unheard;
 
 /// The severity a paused scope publishes. A category, not a measurement: a
 /// deliberate stop is a correctable state, and it stays that however long it
@@ -73,6 +75,12 @@ pub struct Snapshot {
     /// The Subscriptions each node routes by, by node and name (ADR-0013,
     /// amendment 2026-09-30).
     subscriptions: BTreeMap<(String, String), Subscription>,
+    /// The members each node does not hear now, by node and member
+    /// (ADR-0065, amendment 2026-10-02).
+    unheard: BTreeMap<(String, String), Unheard>,
+    /// What each node's Dead Message Queue keeps, by node and place
+    /// (ADR-0052, amendment 2026-10-01).
+    dead_messages: BTreeMap<(String, u64), DeadMessage>,
 }
 
 impl Snapshot {
@@ -128,6 +136,24 @@ impl Snapshot {
         self.event_subscriptions.values()
     }
 
+    /// Record one member a node does not hear now. Replaces what was there
+    /// for that node and member.
+    pub fn record_unheard(&mut self, unheard: Unheard) {
+        self.unheard
+            .insert((unheard.by.clone(), unheard.node.clone()), unheard);
+    }
+
+    /// Forget what `by` did not hear: a node records what it does not hear
+    /// now anew each time it publishes.
+    pub fn clear_unheard(&mut self, by: &str) {
+        self.unheard.retain(|(node, _), _| node != by);
+    }
+
+    /// Every member a node does not hear, by node and member.
+    pub fn unheard(&self) -> impl Iterator<Item = &Unheard> {
+        self.unheard.values()
+    }
+
     /// Record one Subscription a node routes by. Replaces what was there for
     /// that node and name.
     pub fn record_subscription(&mut self, subscription: Subscription) {
@@ -140,6 +166,19 @@ impl Snapshot {
     /// Every Subscription in the snapshot, by node and name.
     pub fn subscriptions(&self) -> impl Iterator<Item = &Subscription> {
         self.subscriptions.values()
+    }
+
+    /// Record one Message a node's Dead Message Queue keeps. Replaces what
+    /// was there for that node and place.
+    pub fn record_dead_message(&mut self, dead: DeadMessage) {
+        self.dead_messages
+            .insert((dead.node.clone(), dead.sequence), dead);
+    }
+
+    /// Every Message the nodes' Dead Message Queues keep, by node and place:
+    /// oldest first on each node.
+    pub fn dead_messages(&self) -> impl Iterator<Item = &DeadMessage> {
+        self.dead_messages.values()
     }
 
     /// Pause everything at and beneath a scope. Each affected record is held at
@@ -284,6 +323,16 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
+
+    /// The test cluster's first node, and `leaf` beneath it.
+    fn node() -> String {
+        test_cluster().node_scope(0)
+    }
+
+    fn at(leaf: &str) -> String {
+        format!("{}/{leaf}", node())
+    }
 
     fn health(scope: &str, health: Health, severity: u8) -> HealthRecord {
         HealthRecord {
@@ -311,16 +360,17 @@ mod tests {
         // ADR-0041: a leaf's mood does not propagate. The leaf that owns the
         // trouble keeps its mood; the parent is displeased — Holding — drill in.
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///edge-01/receive/a", Health::Fine, 0));
-        snapshot.record_health(health("xmip:///edge-01/receive/b", Health::Done, 90));
+        let (node, b) = (node(), at("receive/b"));
+        snapshot.record_health(health(&at("receive/a"), Health::Fine, 0));
+        snapshot.record_health(health(&b, Health::Done, 90));
 
         assert_eq!(
-            snapshot.worst("xmip:///edge-01"),
+            snapshot.worst(&node),
             Some(Health::Holding),
             "a done leaf leaves the parent holding, not done"
         );
         assert_eq!(
-            snapshot.worst("xmip:///edge-01/receive/b"),
+            snapshot.worst(&b),
             Some(Health::Done),
             "the leaf that owns the trouble keeps its mood"
         );
@@ -331,15 +381,13 @@ mod tests {
         // Not only Done: the moment anything below is not Fine, the parent is
         // Holding — a Working leaf below still leaves the parent displeased.
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///edge-01/receive/a", Health::Fine, 0));
-        snapshot.record_health(health("xmip:///edge-01/receive/b", Health::Working, 20));
+        let b = at("receive/b");
+        snapshot.record_health(health(&at("receive/a"), Health::Fine, 0));
+        snapshot.record_health(health(&b, Health::Working, 20));
 
-        assert_eq!(snapshot.worst("xmip:///edge-01"), Some(Health::Holding));
+        assert_eq!(snapshot.worst(&node()), Some(Health::Holding));
         // The leaf itself still shows what it is doing.
-        assert_eq!(
-            snapshot.worst("xmip:///edge-01/receive/b"),
-            Some(Health::Working)
-        );
+        assert_eq!(snapshot.worst(&b), Some(Health::Working));
     }
 
     #[test]
@@ -347,58 +395,53 @@ mod tests {
         // The mood says which; the number orders within it, so the
         // worst thing an operator can act on is the top row.
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///n/receive/mild", Health::Stressed, 40));
-        snapshot.record_health(health("xmip:///n/receive/severe", Health::Stressed, 85));
+        let severe = at("receive/severe");
+        snapshot.record_health(health(&at("receive/mild"), Health::Stressed, 40));
+        snapshot.record_health(health(&severe, Health::Stressed, 85));
 
-        let ordered = snapshot.health("xmip:///n");
-        assert_eq!(ordered[0].scope, "xmip:///n/receive/severe");
+        let ordered = snapshot.health(&node());
+        assert_eq!(ordered[0].scope, severe);
         assert_eq!(ordered[0].severity, 85);
     }
 
     #[test]
     fn a_scope_with_nothing_beneath_it_has_no_health() {
-        assert_eq!(Snapshot::new().worst("xmip:///edge-01"), None);
+        assert_eq!(Snapshot::new().worst(&node()), None);
     }
 
     #[test]
     fn pausing_holds_a_scope_and_stops_its_counts() {
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///edge-01/receive/orders", Health::Fine, 0));
-        snapshot.record_count(count("xmip:///edge-01/receive/orders", 40));
+        let orders = at("receive/orders");
+        snapshot.record_health(health(&orders, Health::Fine, 0));
+        snapshot.record_count(count(&orders, 40));
 
-        let paused = snapshot.pause("xmip:///edge-01/receive/orders", "ilian", 2_000);
+        let paused = snapshot.pause(&orders, "ilian", 2_000);
 
         assert_eq!(paused, 1);
-        let record = &snapshot.health("xmip:///edge-01/receive/orders")[0];
+        let record = &snapshot.health(&orders)[0];
         assert_eq!(record.health, Health::Paused);
         assert_eq!(record.severity, PAUSED_SEVERITY);
         assert!(record.evidence.contains("ilian"));
         // A paused Location is doing nothing, so its count is gone and a fresh
         // one is dropped rather than recorded.
-        assert!(
-            snapshot
-                .measure("xmip:///edge-01/receive/orders", Counted::Streams)
-                .is_none()
-        );
-        snapshot.record_count(count("xmip:///edge-01/receive/orders", 99));
-        assert!(
-            snapshot
-                .measure("xmip:///edge-01/receive/orders", Counted::Streams)
-                .is_none()
-        );
+        assert!(snapshot.measure(&orders, Counted::Streams).is_none());
+        snapshot.record_count(count(&orders, 99));
+        assert!(snapshot.measure(&orders, Counted::Streams).is_none());
     }
 
     #[test]
     fn resume_puts_back_exactly_what_was_there() {
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///n/receive/a", Health::Done, 70));
+        let a = at("receive/a");
+        snapshot.record_health(health(&a, Health::Done, 70));
 
-        snapshot.pause("xmip:///n/receive/a", "ilian", 2_000);
-        assert_eq!(snapshot.worst("xmip:///n/receive/a"), Some(Health::Paused));
+        snapshot.pause(&a, "ilian", 2_000);
+        assert_eq!(snapshot.worst(&a), Some(Health::Paused));
 
-        let resumed = snapshot.resume("xmip:///n/receive/a");
+        let resumed = snapshot.resume(&a);
         assert_eq!(resumed, 1);
-        let record = &snapshot.health("xmip:///n/receive/a")[0];
+        let record = &snapshot.health(&a)[0];
         assert_eq!(record.health, Health::Done);
         assert_eq!(record.severity, 70);
     }
@@ -406,15 +449,16 @@ mod tests {
     #[test]
     fn pausing_a_stage_pauses_every_location_in_it() {
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, 0));
-        snapshot.record_health(health("xmip:///n/receive/b", Health::Fine, 0));
-        snapshot.record_health(health("xmip:///n/send/c", Health::Fine, 0));
+        let (a, c) = (at("receive/a"), at("send/c"));
+        snapshot.record_health(health(&a, Health::Fine, 0));
+        snapshot.record_health(health(&at("receive/b"), Health::Fine, 0));
+        snapshot.record_health(health(&c, Health::Fine, 0));
 
-        let paused = snapshot.pause("xmip:///n/receive", "ilian", 2_000);
+        let paused = snapshot.pause(&at("receive"), "ilian", 2_000);
 
         assert_eq!(paused, 2, "both receive locations, not the send one");
-        assert!(snapshot.is_paused("xmip:///n/receive/a"));
-        assert!(!snapshot.is_paused("xmip:///n/send/c"));
+        assert!(snapshot.is_paused(&a));
+        assert!(!snapshot.is_paused(&c));
     }
 
     #[test]
@@ -422,12 +466,13 @@ mod tests {
         // The node goes on observing while an operator holds a Location down;
         // its fresh reading must not un-pause it.
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, 0));
-        snapshot.pause("xmip:///n/receive/a", "ilian", 2_000);
+        let a = at("receive/a");
+        snapshot.record_health(health(&a, Health::Fine, 0));
+        snapshot.pause(&a, "ilian", 2_000);
 
-        snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, 0));
+        snapshot.record_health(health(&a, Health::Fine, 0));
 
-        assert_eq!(snapshot.worst("xmip:///n/receive/a"), Some(Health::Paused));
+        assert_eq!(snapshot.worst(&a), Some(Health::Paused));
     }
 
     #[test]
@@ -435,12 +480,19 @@ mod tests {
         // Open problem 25, row k: the surfaces compare the path after the
         // scheme and the authority, and the snapshot now does too.
         let mut snapshot = Snapshot::new();
-        snapshot.record_health(health("xmip://edge-01/n/receive/a", Health::Done, 90));
+        let cluster = test_cluster();
+        let (name, root) = (&cluster.name, cluster.scope());
+        let hosted = format!("xmip://edge-01/{name}/receive/a");
+        snapshot.record_health(health(&hosted, Health::Done, 90));
 
-        assert_eq!(snapshot.health("xmip:///n").len(), 1);
-        assert_eq!(snapshot.worst("xmip:///n"), Some(Health::Holding));
-        assert_eq!(snapshot.worst("xmip:///n/receive/a/"), Some(Health::Done));
-        assert_eq!(snapshot.pause("n/receive", "ilian", 2_000), 1);
-        assert!(snapshot.is_paused("xmip:///n/receive/a"));
+        assert_eq!(snapshot.health(&root).len(), 1);
+        assert_eq!(snapshot.worst(&root), Some(Health::Holding));
+        let slashed = format!("{root}/receive/a/");
+        assert_eq!(snapshot.worst(&slashed), Some(Health::Done));
+        assert_eq!(
+            snapshot.pause(&format!("{name}/receive"), "ilian", 2_000),
+            1
+        );
+        assert!(snapshot.is_paused(&format!("{root}/receive/a")));
     }
 }

@@ -291,18 +291,24 @@ impl ExactSizeIterator for Points<'_, '_> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
+
+    /// `leaf` beneath the test cluster's first node.
+    fn at(leaf: &str) -> String {
+        format!("{}/{leaf}", test_cluster().node_scope(0))
+    }
 
     fn snapshot() -> Snapshot {
         let mut snapshot = Snapshot::new();
         snapshot.record_health(HealthRecord {
-            scope: "xmip:///c1/node/n1/receive/a".to_string(),
+            scope: at("receive/a"),
             health: Health::Stressed,
             severity: 40,
             evidence: String::new(),
             observed_unix_nanos: 9,
         });
         snapshot.record_count(Count {
-            scope: "xmip:///c1/node/n1/receive/a".to_string(),
+            scope: at("receive/a"),
             counted: Counted::Bytes,
             value: 512,
             window_start_unix_nanos: 1,
@@ -366,9 +372,9 @@ mod tests {
     fn every_scope_is_read_once_and_every_point_knows_its_own() {
         let mut snapshot = snapshot();
         // A scope counted and never given a mood, and one before it in order.
-        for scope in ["xmip:///c1/node/n1/send/b", "xmip:///c1/node/n1/process/p"] {
+        for scope in [at("send/b"), at("process/p")] {
             snapshot.record_count(Count {
-                scope: scope.to_string(),
+                scope,
                 counted: Counted::Failed,
                 value: 1,
                 window_start_unix_nanos: 1,
@@ -379,11 +385,7 @@ mod tests {
         let reading = Reading::of(&snapshot);
         assert_eq!(
             reading.scopes(),
-            [
-                "xmip:///c1/node/n1/process/p",
-                "xmip:///c1/node/n1/receive/a",
-                "xmip:///c1/node/n1/send/b"
-            ]
+            [at("process/p"), at("receive/a"), at("send/b")]
         );
         for figure in &FIGURES {
             for point in reading.points(figure) {

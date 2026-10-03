@@ -12,14 +12,15 @@
 //!
 //! - `*` and `?` are the only metacharacters; `[`, `]` and a backtick are
 //!   literal. No scope the estate publishes carries one.
-//! - `*` crosses a `/`, as it does in `-like`, so `xmip:///C1/*/receive`
-//!   reaches a stage however deep the node sits.
+//! - `*` crosses a `/`, as it does in `-like`, so
+//!   `xmip:///<cluster>/*/receive` reaches a stage however deep the node
+//!   sits.
 //! - Both sides are read as scopes first ([`Scope`]): the scheme and the
-//!   authority go and empty segments drop, so `C1/node/R*` and
-//!   `xmip:///C1/node/R*` are one pattern.
+//!   authority go and empty segments drop, so `<cluster>/node/<prefix>*`
+//!   and `xmip:///<cluster>/node/<prefix>*` are one pattern.
 //! - Case-insensitive, which is what `-like` is by default. The scheme is
-//!   read the one way [`Scope`] reads it, lower-case, so `XMIP:///C1` is a
-//!   path and not a scope.
+//!   read the one way [`Scope`] reads it, lower-case, so `XMIP:///<cluster>`
+//!   is a path and not a scope.
 
 use crate::scope::Scope;
 
@@ -95,60 +96,85 @@ fn same(wanted: char, seen: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use configure::fixture::test_cluster;
+
+    /// The node's name without its last character: what a `?` stands in
+    /// for.
+    fn stem(name: &str) -> String {
+        let mut stem = name.to_string();
+        stem.pop();
+        stem
+    }
 
     #[test]
     fn a_pattern_with_no_wildcard_is_the_scope_itself() {
-        assert!(!has_wildcard("xmip:///C1/node/alpha"));
-        assert!(matches("xmip:///C1/node/alpha", "xmip:///C1/node/alpha"));
-        assert!(!matches("xmip:///C1/node/alpha", "node"));
-        assert!(!matches("xmip:///C1/node/alpha", "xmip:///C1/node"));
-        assert!(!matches(
-            "xmip:///C1/node/alphabet",
-            "xmip:///C1/node/alpha"
-        ));
+        let cluster = test_cluster();
+        let (root, node) = (cluster.scope(), cluster.node_scope(0));
+        assert!(!has_wildcard(&node));
+        assert!(matches(&node, &node));
+        assert!(!matches(&node, "node"));
+        assert!(!matches(&node, &format!("{root}/node")));
+        assert!(!matches(&format!("{node}bet"), &node));
     }
 
     #[test]
     fn a_dot_is_a_dot_and_not_any_character() {
-        assert!(matches("xmip:///C1/test/Rust.Style", "*/Rust.*"));
-        assert!(!matches("xmip:///C1/test/RustXStyle", "*/Rust.*"));
+        let root = test_cluster().scope();
+        assert!(matches(&format!("{root}/test/Rust.Style"), "*/Rust.*"));
+        assert!(!matches(&format!("{root}/test/RustXStyle"), "*/Rust.*"));
     }
 
     #[test]
     fn a_star_is_any_run_and_a_question_mark_exactly_one() {
-        assert!(has_wildcard("xmip:///C1/node/al*"));
-        assert!(matches("xmip:///C1/node/alpha", "xmip:///C1/node/al*"));
-        assert!(matches("xmip:///C1/node/alpha", "xmip:///C1/node/alph?"));
-        assert!(!matches("xmip:///C1/node/alphas", "xmip:///C1/node/alph?"));
-        assert!(matches("xmip:///C1/node/alpha", "*"));
+        let cluster = test_cluster();
+        let (root, node) = (cluster.scope(), cluster.node_scope(0));
+        let name = &cluster.node(0).name;
+        let first: String = name.chars().take(1).collect();
+        let prefix = format!("{root}/node/{first}*");
+        let one = format!("{root}/node/{}?", stem(name));
+        assert!(has_wildcard(&prefix));
+        assert!(matches(&node, &prefix));
+        assert!(matches(&node, &one));
+        assert!(!matches(&format!("{node}s"), &one));
+        assert!(matches(&node, "*"));
         assert!(matches("", "*"), "the root is matched by a star alone");
-        assert!(!matches("", "C1"));
-        assert!(matches("xmip:///C1", "xmip:///C1*"));
+        assert!(!matches("", &cluster.name));
+        assert!(matches(&root, &format!("{root}*")));
     }
 
     #[test]
     fn a_star_crosses_a_slash_and_backtracks() {
-        assert!(matches(
-            "xmip:///C1/node/alpha/receive",
-            "xmip:///C1/*/receive"
-        ));
-        assert!(!matches(
-            "xmip:///C1/node/alpha/receive/tcp",
-            "xmip:///C1/*/receive"
-        ));
-        assert!(matches("xmip:///C1/aXbXc", "*X*X*"));
-        assert!(!matches("xmip:///C1/aXb", "*X*X*"));
+        let cluster = test_cluster();
+        let (root, node) = (cluster.scope(), cluster.node_scope(0));
+        let pattern = format!("{root}/*/receive");
+        assert!(matches(&format!("{node}/receive"), &pattern));
+        assert!(!matches(&format!("{node}/receive/tcp"), &pattern));
+        assert!(matches(&format!("{root}/aXbXc"), "*X*X*"));
+        assert!(!matches(&format!("{root}/aXb"), "*X*X*"));
     }
 
     #[test]
     fn case_is_ignored_and_the_scheme_is_lower_case() {
-        assert!(matches("xmip:///C1/node/ålpha", "c1/NODE/ÅL*"));
-        assert!(!matches("xmip:///C1/node/alpha", "XMIP:///C1/node/alpha"));
+        let cluster = test_cluster();
+        let (name, node) = (&cluster.name, &cluster.node(0).name);
+        let first: String = node.chars().take(1).collect();
+        assert!(matches(
+            &format!(
+                "xmip:///{}/node/å{}",
+                name.to_uppercase(),
+                node.to_uppercase()
+            ),
+            &format!("{}/NODE/Å{}*", name.to_lowercase(), first.to_lowercase())
+        ));
+        let node = cluster.node_scope(0);
+        assert!(!matches(&node, &node.replacen("xmip", "XMIP", 1)));
     }
 
     #[test]
     fn a_set_and_a_backtick_are_literal() {
-        assert!(matches("xmip:///C1/[a]", "C1/[a]"));
-        assert!(!matches("xmip:///C1/a", "C1/[a]"));
+        let cluster = test_cluster();
+        let (name, root) = (&cluster.name, cluster.scope());
+        assert!(matches(&format!("{root}/[a]"), &format!("{name}/[a]")));
+        assert!(!matches(&format!("{root}/a"), &format!("{name}/[a]")));
     }
 }

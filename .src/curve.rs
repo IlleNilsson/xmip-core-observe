@@ -111,6 +111,7 @@ struct PointDocument {
 mod tests {
     use super::*;
     use crate::snapshot::Snapshot;
+    use configure::fixture::test_cluster;
 
     fn count(scope: &str, counted: Counted, value: u64, at: i64) -> Count {
         Count {
@@ -126,15 +127,17 @@ mod tests {
     #[test]
     fn a_nodes_own_series_crosses_the_file_whole() {
         let mut history = History::default();
+        let node = test_cluster().node_scope(0);
+        let receive = format!("{node}/receive");
         for (value, at) in [(3, 10), (5, 20)] {
             let mut snapshot = Snapshot::new();
-            snapshot.record_count(count("xmip:///n", Counted::Bytes, value, at));
-            snapshot.record_count(count("xmip:///n", Counted::Failed, 1, at));
-            snapshot.record_count(count("xmip:///n/receive", Counted::Streams, 9, at));
+            snapshot.record_count(count(&node, Counted::Bytes, value, at));
+            snapshot.record_count(count(&node, Counted::Failed, 1, at));
+            snapshot.record_count(count(&receive, Counted::Streams, 9, at));
             history.record(&snapshot);
         }
 
-        let curve = Curve::of("xmip:///n", &history);
+        let curve = Curve::of(&node, &history);
         assert_eq!(
             curve.points.len(),
             2,
@@ -148,13 +151,14 @@ mod tests {
 
     #[test]
     fn an_unknown_kind_is_skipped_and_a_stranger_is_refused() {
-        let read = Curve::read(
-            "node = \"xmip:///n\"\n[[points]]\ncounted = \"throughput\"\nvalue = 1\n\
+        let node = test_cluster().node_scope(0);
+        let read = Curve::read(&format!(
+            "node = \"{node}\"\n[[points]]\ncounted = \"throughput\"\nvalue = 1\n\
              [[points]]\ncounted = \"messages\"\nvalue = 7\nobserved_unix_nanos = 4\n",
-        )
+        ))
         .expect("reads");
 
-        assert_eq!(read.points, [count("xmip:///n", Counted::Messages, 7, 4)]);
+        assert_eq!(read.points, [count(&node, Counted::Messages, 7, 4)]);
         assert!(Curve::read("points = 3").is_err());
         assert_eq!(Curve::read("").map(|curve| curve.points.len()), Ok(0));
     }

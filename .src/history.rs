@@ -118,6 +118,16 @@ fn push<T>(series: &mut VecDeque<T>, point: T, capacity: usize) {
 mod tests {
     use super::*;
     use crate::health::Health;
+    use configure::fixture::test_cluster;
+
+    /// The test cluster's first node, and `leaf` beneath it.
+    fn node() -> String {
+        test_cluster().node_scope(0)
+    }
+
+    fn at(leaf: &str) -> String {
+        format!("{}/{leaf}", node())
+    }
 
     fn health(scope: &str, health: Health, now: i64) -> HealthRecord {
         HealthRecord {
@@ -143,20 +153,21 @@ mod tests {
     #[test]
     fn a_series_accumulates_over_ticks_oldest_first() {
         let mut history = History::default();
+        let (node, a) = (node(), at("receive/a"));
 
         for tick in 0..3 {
             let mut snapshot = Snapshot::new();
-            snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, tick));
-            snapshot.record_count(count("xmip:///n", u64::try_from(tick).unwrap_or(0), tick));
+            snapshot.record_health(health(&a, Health::Fine, tick));
+            snapshot.record_count(count(&node, u64::try_from(tick).unwrap_or(0), tick));
             history.record(&snapshot);
         }
 
-        let series = history.health_series("xmip:///n/receive/a");
+        let series = history.health_series(&a);
         assert_eq!(series.len(), 3);
         assert_eq!(series.first().map(|r| r.observed_unix_nanos), Some(0));
         assert_eq!(series.last().map(|r| r.observed_unix_nanos), Some(2));
 
-        let throughput = history.count_series("xmip:///n", Counted::Bytes);
+        let throughput = history.count_series(&node, Counted::Bytes);
         assert_eq!(throughput.len(), 3);
         assert_eq!(throughput.last().map(|c| c.value), Some(2));
     }
@@ -164,14 +175,15 @@ mod tests {
     #[test]
     fn the_series_is_bounded_and_drops_the_oldest() {
         let mut history = History::with_capacity(2);
+        let a = at("receive/a");
 
         for tick in 0..5 {
             let mut snapshot = Snapshot::new();
-            snapshot.record_health(health("xmip:///n/receive/a", Health::Fine, tick));
+            snapshot.record_health(health(&a, Health::Fine, tick));
             history.record(&snapshot);
         }
 
-        let series = history.health_series("xmip:///n/receive/a");
+        let series = history.health_series(&a);
         assert_eq!(series.len(), 2, "capacity is two");
         assert_eq!(series.first().map(|r| r.observed_unix_nanos), Some(3));
         assert_eq!(series.last().map(|r| r.observed_unix_nanos), Some(4));
@@ -180,14 +192,15 @@ mod tests {
     #[test]
     fn a_range_query_returns_only_points_at_or_after_the_bound() {
         let mut history = History::default();
+        let b = at("send/b");
 
         for tick in 0..5 {
             let mut snapshot = Snapshot::new();
-            snapshot.record_health(health("xmip:///n/send/b", Health::Fine, tick));
+            snapshot.record_health(health(&b, Health::Fine, tick));
             history.record(&snapshot);
         }
 
-        let recent = history.health_since("xmip:///n/send/b", 3);
+        let recent = history.health_since(&b, 3);
         assert_eq!(recent.len(), 2);
         assert!(recent.iter().all(|r| r.observed_unix_nanos >= 3));
     }
@@ -195,11 +208,8 @@ mod tests {
     #[test]
     fn an_unknown_scope_has_an_empty_series() {
         let history = History::default();
-        assert!(history.health_series("xmip:///nothing").is_empty());
-        assert!(
-            history
-                .count_series("xmip:///nothing", Counted::Streams)
-                .is_empty()
-        );
+        let nothing = test_cluster().scope();
+        assert!(history.health_series(&nothing).is_empty());
+        assert!(history.count_series(&nothing, Counted::Streams).is_empty());
     }
 }
