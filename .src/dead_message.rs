@@ -54,7 +54,10 @@ mod tests {
             message: "0199a000-0000-7000-8000-000000000001".to_string(),
             sequence: 3,
             promoted: vec![["MessageType".to_string(), "Invoice".to_string()]],
-            declines: vec![["structured".to_string(), "MessageType is Invoice".to_string()]],
+            declines: vec![[
+                "structured".to_string(),
+                "MessageType is Invoice".to_string(),
+            ]],
             ..DeadMessage::default()
         };
         let text = toml::to_string(&written).expect("written");
