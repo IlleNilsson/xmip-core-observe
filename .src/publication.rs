@@ -4,7 +4,7 @@
 //! A publisher and its readers are separate processes, and the bridge
 //! between them is a file. Its shape — `source`, `node`, `orders`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
-//! `[[unheard]]`, `[[dead_messages]]`, and a roll's `[run]` and `[topology]` — was written by the
+//! `[[unheard]]`, `[[dead_messages]]`, `[[failed_journeys]]`, and a roll's `[run]` and `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
 //! Playground, `xmip-service` — writes through [`Publication::write`], the
@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use crate::counted::Counted;
 use crate::dead_message::DeadMessage;
 use crate::event_subscription::{EventSubscription, EventSubscriptionDocument};
+use crate::failed_journey::FailedJourneys;
 use crate::health::Health;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
@@ -66,6 +67,9 @@ pub struct Publication {
     pub unheard: Vec<Unheard>,
     /// What the Dead Message Queues of the nodes beneath `node` keep.
     pub dead_messages: Vec<DeadMessage>,
+    /// The Journeys that failed at the Send Ports of the nodes beneath
+    /// `node`: how many at each, and the oldest.
+    pub failed_journeys: Vec<FailedJourneys>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -91,6 +95,7 @@ impl Publication {
             event_subscriptions: snapshot.event_subscriptions().cloned().collect(),
             unheard: snapshot.unheard().cloned().collect(),
             dead_messages: snapshot.dead_messages().cloned().collect(),
+            failed_journeys: snapshot.failed_journeys().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -151,6 +156,7 @@ impl Publication {
                 .collect(),
             unheard: self.unheard.iter().map(UnheardDocument::of).collect(),
             dead_messages: self.dead_messages.clone(),
+            failed_journeys: self.failed_journeys.clone(),
             run: self.run.clone(),
             topology: self.topology.clone(),
         };
@@ -235,6 +241,7 @@ impl Publication {
                 .map(UnheardDocument::into_unheard)
                 .collect(),
             dead_messages: document.dead_messages,
+            failed_journeys: document.failed_journeys,
             run: document.run,
             topology,
         })
@@ -262,6 +269,9 @@ impl Publication {
         }
         for dead in &self.dead_messages {
             snapshot.record_dead_message(dead.clone());
+        }
+        for failed in &self.failed_journeys {
+            snapshot.record_failed_journeys(failed.clone());
         }
         snapshot
     }
@@ -296,6 +306,8 @@ pub fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
     std::fs::rename(&temp, path)
 }
 
+pub(crate) mod mood;
+
 /// The file, as it lies.
 #[derive(Serialize, Deserialize)]
 struct Document {
@@ -317,6 +329,8 @@ struct Document {
     unheard: Vec<UnheardDocument>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     dead_messages: Vec<DeadMessage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    failed_journeys: Vec<FailedJourneys>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -368,34 +382,6 @@ struct CountDocument {
     /// own scope.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     scope: String,
-}
-
-/// A mood as a publication writes it: [`Health::word`], and a word no mood
-/// is called read as `Stressed`, so it shows and is looked at.
-pub(crate) mod mood {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    use crate::health::Health;
-
-    /// What a mood no one is called reads as.
-    pub(crate) const fn unknown() -> Health {
-        Health::Stressed
-    }
-
-    #[allow(clippy::trivially_copy_pass_by_ref)] // serde's `with` passes a reference
-    pub(crate) fn serialize<S: Serializer>(
-        health: &Health,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(health.word())
-    }
-
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Health, D::Error> {
-        let word = String::deserialize(deserializer)?;
-        Ok(Health::named(&word).unwrap_or_else(unknown))
-    }
 }
 
 #[cfg(test)]
