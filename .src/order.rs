@@ -2,13 +2,15 @@
 //! reaches through its publication only (ADR-0065, amendment 2026-09-29;
 //! ADR-0013, amendment 2026-09-30).
 //!
-//! Three things an operator acts on are published by a node: its Event
-//! subscriptions, its Subscriptions and the Messages its Dead Message Queue
-//! keeps ([`Noun`]). The acts and their words are written here once
-//! ([`Act`]), with which acts each takes: an Event subscription is paused,
-//! resumed or removed; a Subscription is paused or resumed only, since it is
-//! added and removed in the TOML configuration; a Message in the Dead
-//! Message Queue is replayed (ADR-0052, amendment 2026-10-01).
+//! Four things an operator acts on are published by a node: its Event
+//! subscriptions, its Subscriptions, the Messages its Dead Message Queue
+//! keeps and the Journeys it sends ([`Noun`]). The acts and their words are
+//! written here once ([`Act`]), with which acts each takes: an Event
+//! subscription is paused, resumed or removed; a Subscription is paused or
+//! resumed only, since it is added and removed in the TOML configuration; a
+//! Message in the Dead Message Queue is replayed (ADR-0052, amendment
+//! 2026-10-01); a Journey that failed is retried or dismissed
+//! (`runtime-model.md` section 13).
 //!
 //! A surface reading a live node applies an act through the runtime's
 //! library, in the node's own process. A surface reading a snapshot touches
@@ -40,11 +42,23 @@ pub enum Act {
     /// Route a Message of the Dead Message Queue again, against the
     /// Subscriptions of now.
     Replay,
+    /// Send a Journey that failed again, from its Send Port's queue.
+    Retry,
+    /// End a Journey that failed, by a decision: Dismissed, its history
+    /// kept.
+    Dismiss,
 }
 
 impl Act {
     /// Every act, in the order a surface offers them.
-    pub const ALL: [Self; 4] = [Self::Pause, Self::Resume, Self::Remove, Self::Replay];
+    pub const ALL: [Self; 6] = [
+        Self::Pause,
+        Self::Resume,
+        Self::Remove,
+        Self::Replay,
+        Self::Retry,
+        Self::Dismiss,
+    ];
 
     /// The word the estate names the act by.
     #[must_use]
@@ -54,6 +68,8 @@ impl Act {
             Self::Resume => "resume",
             Self::Remove => "remove",
             Self::Replay => "replay",
+            Self::Retry => "retry",
+            Self::Dismiss => "dismiss",
         }
     }
 
@@ -73,14 +89,17 @@ pub enum Noun {
     Subscription,
     /// A Message in its node's Dead Message Queue, by its identifier.
     DeadMessage,
+    /// A Journey a node sends, by its identifier.
+    Journey,
 }
 
 impl Noun {
     /// Every noun an order names.
-    pub const ALL: [Self; 3] = [
+    pub const ALL: [Self; 4] = [
         Self::EventSubscription,
         Self::Subscription,
         Self::DeadMessage,
+        Self::Journey,
     ];
 
     /// The word an order names it by.
@@ -90,6 +109,7 @@ impl Noun {
             Self::EventSubscription => "event-subscription",
             Self::Subscription => "subscription",
             Self::DeadMessage => "dead-message",
+            Self::Journey => "journey",
         }
     }
 
@@ -106,6 +126,7 @@ impl Noun {
             Self::EventSubscription => &[Act::Pause, Act::Resume, Act::Remove],
             Self::Subscription => &[Act::Pause, Act::Resume],
             Self::DeadMessage => &[Act::Replay],
+            Self::Journey => &[Act::Retry, Act::Dismiss],
         }
     }
 
@@ -140,6 +161,7 @@ impl Noun {
             Self::EventSubscription => "event",
             Self::Subscription => "subscription",
             Self::DeadMessage => "dead-message",
+            Self::Journey => "journey",
         };
         format!("{noun}.{}", act.word())
     }
@@ -151,6 +173,7 @@ impl Noun {
             Self::EventSubscription => "an Event subscription",
             Self::Subscription => "a Subscription",
             Self::DeadMessage => "a Message in the Dead Message Queue",
+            Self::Journey => "a Journey",
         }
     }
 }
@@ -161,7 +184,8 @@ pub struct Order {
     /// The node that holds it: `xmip:///<cluster>/node/<name>`.
     pub node: String,
     pub noun: Noun,
-    /// Which one: an Event subscription's number, a Subscription's name.
+    /// Which one: an Event subscription's number, a Subscription's name, a
+    /// Message's or a Journey's identifier.
     pub target: String,
     pub act: Act,
     /// Who acted, for the audit record.
@@ -318,6 +342,16 @@ mod tests {
         assert!(paused.contains("the acts are replay"), "{paused}");
         assert!(Noun::Subscription.act("replay").is_err());
         assert!(Noun::EventSubscription.act("replay").is_err());
+        assert_eq!(Noun::Journey.act("retry"), Ok(Act::Retry));
+        assert_eq!(Noun::Journey.act("dismiss"), Ok(Act::Dismiss));
+        assert_eq!(Noun::Journey.action(Act::Dismiss), "journey.dismiss");
+        let replayed = Noun::Journey.act("replay").expect_err("refused");
+        assert!(
+            replayed.contains("the acts are retry, dismiss"),
+            "{replayed}"
+        );
+        assert!(Noun::DeadMessage.act("retry").is_err());
+        assert_eq!(Noun::named("journey"), Some(Noun::Journey));
     }
 
     #[test]

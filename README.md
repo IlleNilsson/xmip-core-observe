@@ -53,11 +53,13 @@ Location, time, gate verdicts, promoted properties and every Subscription's
 decline; ADR-0052, amendment 2026-10-01), kept by node and place
 (`Snapshot::record_dead_message`), as `[[dead_messages]]`. `orders` is the
 directory where its publisher takes an operator's act on any of them:
-`Order` writes and takes the file, `Act` names pause, resume, remove and
-replay once, and `Noun` says which acts each takes — an Event subscription
-pause, resume and remove, a Subscription pause and resume only, since it is
-added and removed in the TOML configuration, and a Message in the Dead
-Message Queue (`dead-message`) replay only.
+`Order` writes and takes the file, `Act` names pause, resume, remove,
+replay, retry and dismiss once, and `Noun` says which acts each takes — an
+Event subscription pause, resume and remove, a Subscription pause and resume
+only, since it is added and removed in the TOML configuration, a Message in
+the Dead Message Queue (`dead-message`) replay only, and a Journey that
+failed (`journey`, by its identifier) retry and dismiss (`runtime-model.md`
+section 13, built 2026-10-04).
 
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
 `Scope` reads one — the scheme and the authority go, a slash at either end
