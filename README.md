@@ -51,7 +51,12 @@ paused in `PauseState`'s words. It carries too the oldest Messages each
 node's Dead Message Queue keeps (`DeadMessage`: node, Message, place, Receive
 Location, time, gate verdicts, promoted properties and every Subscription's
 decline; ADR-0052, amendment 2026-10-01), kept by node and place
-(`Snapshot::record_dead_message`), as `[[dead_messages]]`. `orders` is the
+(`Snapshot::record_dead_message`), as `[[dead_messages]]`; and, for each
+Send Port with Journeys that failed waiting in its queue, how many and the
+oldest with why (`FailedJourneys`: node, Send Port, count, and each
+`FailedJourney`'s identifier, place and reason; `runtime-model.md` section
+13), kept by node and Port (`Snapshot::record_failed_journeys`), as
+`[[failed_journeys]]`. `orders` is the
 directory where its publisher takes an operator's act on any of them:
 `Order` writes and takes the file, `Act` names pause, resume, remove,
 replay, retry and dismiss once, and `Noun` says which acts each takes — an

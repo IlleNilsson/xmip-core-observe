@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use crate::counted::Counted;
 use crate::dead_message::DeadMessage;
 use crate::event_subscription::EventSubscription;
+use crate::failed_journey::FailedJourneys;
 use crate::health::{Health, Standing};
 use crate::scope::Scope;
 use crate::subscription::Subscription;
@@ -81,6 +82,9 @@ pub struct Snapshot {
     /// What each node's Dead Message Queue keeps, by node and place
     /// (ADR-0052, amendment 2026-10-01).
     dead_messages: BTreeMap<(String, u64), DeadMessage>,
+    /// The Journeys that failed at each node's Send Port, by node and Port
+    /// (`runtime-model.md` section 13).
+    failed_journeys: BTreeMap<(String, String), FailedJourneys>,
 }
 
 impl Snapshot {
@@ -179,6 +183,19 @@ impl Snapshot {
     /// oldest first on each node.
     pub fn dead_messages(&self) -> impl Iterator<Item = &DeadMessage> {
         self.dead_messages.values()
+    }
+
+    /// Record the Journeys that failed at one node's Send Port. Replaces
+    /// what was there for that node and Port.
+    pub fn record_failed_journeys(&mut self, failed: FailedJourneys) {
+        self.failed_journeys
+            .insert((failed.node.clone(), failed.send_port.clone()), failed);
+    }
+
+    /// The Journeys that failed at every node's Send Ports, by node and
+    /// Port.
+    pub fn failed_journeys(&self) -> impl Iterator<Item = &FailedJourneys> {
+        self.failed_journeys.values()
     }
 
     /// Pause everything at and beneath a scope. Each affected record is held at
