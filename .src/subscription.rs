@@ -27,7 +27,7 @@ pub struct Subscription {
     pub application: String,
     /// What it subscribes to: its filter, as configured.
     pub filter: String,
-    /// Where it leads, in words: the Send Port, Send Port Group or Xmip
+    /// Where it leads, in words: the Send Port, Send Port Group or Work
     /// Process a Message it picks up goes to.
     pub destination: String,
     /// The file it is configured in.
