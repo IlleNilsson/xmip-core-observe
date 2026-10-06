@@ -38,7 +38,7 @@ pub use counted::Counted;
 pub use curve::Curve;
 pub use dead_message::DeadMessage;
 pub use event_subscription::EventSubscription;
-pub use failed_journey::{FailedJourney, FailedJourneys};
+pub use failed_journey::{FailedJourney, FailedJourneys, LastFailure};
 pub use figure::{FIGURES, Figure, Kind, Point, Points, Reading};
 pub use health::{Health, Standing};
 pub use history::{DEFAULT_SERIES_CAPACITY, History};
