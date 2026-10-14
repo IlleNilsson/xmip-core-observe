@@ -327,8 +327,8 @@ mod tests {
         );
         assert_eq!(parts(&format!("{n}/receive")), [n.as_str(), "receive"]);
         assert_eq!(parts(&format!("xmip:///{n}//b")), [n.as_str(), "b"]);
-        assert!(parts("xmip:///").is_empty());
-        assert!(parts("").is_empty());
-        assert!(parts("xmip://edge-01").is_empty());
+        assert_eq!(parts("xmip:///"), [] as [&str; 0]);
+        assert_eq!(parts(""), [] as [&str; 0]);
+        assert_eq!(parts("xmip://edge-01"), [] as [&str; 0]);
     }
 }

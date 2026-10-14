@@ -209,7 +209,10 @@ mod tests {
     fn an_unknown_scope_has_an_empty_series() {
         let history = History::default();
         let nothing = test_cluster().scope();
-        assert!(history.health_series(&nothing).is_empty());
-        assert!(history.count_series(&nothing, Counted::Streams).is_empty());
+        assert_eq!(history.health_series(&nothing), [] as [HealthRecord; 0]);
+        assert_eq!(
+            history.count_series(&nothing, Counted::Streams),
+            [] as [Count; 0]
+        );
     }
 }
