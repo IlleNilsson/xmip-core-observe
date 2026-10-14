@@ -206,6 +206,6 @@ mod tests {
         activity.record(item(ItemKind::Stream, &at("x"), "s1", 1));
 
         let other = format!("xmip:///{}", test_cluster().other());
-        assert!(activity.recent(&other, None, 10).is_empty());
+        assert_eq!(activity.recent(&other, None, 10), [] as [Item; 0]);
     }
 }

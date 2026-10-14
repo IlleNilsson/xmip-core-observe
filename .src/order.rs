@@ -362,13 +362,16 @@ mod tests {
         pause.leave(&at).expect("left");
         resume.leave(&at).expect("left");
 
-        assert!(Order::take(&at, &test_cluster().node_scope(1)).is_empty());
+        assert_eq!(
+            Order::take(&at, &test_cluster().node_scope(1)),
+            [] as [Result<Order, String>; 0]
+        );
         let taken: Vec<Order> = Order::take(&at, &node())
             .into_iter()
             .collect::<Result<_, _>>()
             .expect("orders");
         assert_eq!(taken, vec![pause, resume], "oldest first");
-        assert!(Order::take(&at, &node()).is_empty());
+        assert_eq!(Order::take(&at, &node()), [] as [Result<Order, String>; 0]);
         let _ = fs::remove_dir_all(&at);
     }
 

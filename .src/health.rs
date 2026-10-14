@@ -284,7 +284,7 @@ mod tests {
         ];
 
         assert_eq!(Standing::worst_first(&records), [2, 4, 1, 0, 3]);
-        assert!(Standing::worst_first(&[]).is_empty());
+        assert_eq!(Standing::worst_first(&[]), [] as [usize; 0]);
     }
 
     #[test]
