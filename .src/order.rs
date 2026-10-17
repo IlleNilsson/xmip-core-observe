@@ -16,7 +16,8 @@
 //! library, in the node's own process. A surface reading a snapshot touches
 //! no node: the publication says where its publisher takes orders
 //! ([`crate::Publication::orders`]), the surface leaves one there, and the
-//! node takes it at its next look and applies it as any act is applied. The
+//! node, told by its operating system that the directory changed, takes it
+//! and applies it as any act is applied. The
 //! file, its place and its shape are written here once:
 //! `<orders>/<node name>/<unix nanos>-<sequence>-<act>.toml`, written whole
 //! beside itself and renamed into place, so a node never reads half of one.
@@ -212,7 +213,7 @@ impl Order {
     /// take; the reason when the file could not be written.
     pub fn leave(&self, orders: &Path) -> Result<PathBuf, String> {
         self.noun.act(self.act.word())?;
-        let place = place(orders, &self.node)?;
+        let place = Self::place(orders, &self.node)?;
         fs::create_dir_all(&place).map_err(|error| failed(&place, &error))?;
         let name = format!(
             "{}-{:06}-{}.toml",
@@ -240,7 +241,7 @@ impl Order {
     /// too, and said rather than applied.
     #[must_use]
     pub fn take(orders: &Path, node: &str) -> Vec<Result<Self, String>> {
-        let Ok(place) = place(orders, node) else {
+        let Ok(place) = Self::place(orders, node) else {
             return Vec::new();
         };
         let Ok(entries) = fs::read_dir(&place) else {
@@ -281,15 +282,19 @@ impl Order {
             who: document.who,
         })
     }
-}
 
-/// Where a node's orders lie: beneath `orders`, by the node's name.
-fn place(orders: &Path, node: &str) -> Result<PathBuf, String> {
-    Scope::new(node)
-        .node()
-        .filter(|name| !name.is_empty())
-        .map(|name| orders.join(name))
-        .ok_or_else(|| format!("REFUSED: '{node}' names no node"))
+    /// Where the orders for the node at `node` lie: beneath `orders`, by
+    /// the node's name — the directory the node is told of a change in.
+    ///
+    /// # Errors
+    /// REFUSED when `node` names no node.
+    pub fn place(orders: &Path, node: &str) -> Result<PathBuf, String> {
+        Scope::new(node)
+            .node()
+            .filter(|name| !name.is_empty())
+            .map(|name| orders.join(name))
+            .ok_or_else(|| format!("REFUSED: '{node}' names no node"))
+    }
 }
 
 fn failed(path: &Path, error: &std::io::Error) -> String {
