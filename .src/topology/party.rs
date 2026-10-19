@@ -12,8 +12,9 @@
 //! each side, is the publisher's to say ([`Party`]): the Playground's are its
 //! configuration's `[[parties]]`, each on its share of the transports
 //! (ADR-0028, amendment 2026-10-13); a running node's is `any-party`, over
-//! every endpoint, while no gate narrows a Location to its Parties
-//! (ADR-0018, amendment 2026-09-30). Drawn here once for both.
+//! every endpoint, while its publication does not say which Parties a
+//! Location's `accept.party` takes (ADR-0018, amendment 2026-09-30; open
+//! problem 33). Drawn here once for both.
 
 use node::Stage;
 
