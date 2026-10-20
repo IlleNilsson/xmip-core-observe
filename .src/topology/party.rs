@@ -23,7 +23,7 @@ use crate::counted::Counted;
 use crate::snapshot::{HealthRecord, Snapshot};
 use crate::topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
 
-/// A Party to draw, and the endpoints — by the transport each is labelled
+/// A Party to draw, and the endpoints — by the transport each is labeled
 /// with — it is reached over on each side. `None` on a side is every
 /// endpoint a stage holds; an empty list is not on that side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,7 +145,7 @@ impl Drawing<'_> {
         format!("party/{}/{}", self.side.word(), self.party)
     }
 
-    /// Whether the Party is reached over the endpoint labelled `label`.
+    /// Whether the Party is reached over the endpoint labeled `label`.
     fn reaches(&self, label: &str) -> bool {
         self.over
             .is_none_or(|over| over.iter().any(|one| one == label))
