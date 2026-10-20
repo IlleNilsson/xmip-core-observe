@@ -12,7 +12,7 @@
 
 use std::cmp::Ordering;
 
-/// The mood of a scope — observability-model.md section 6. A mood, not a colour:
+/// The mood of a scope — observability-model.md section 6. A mood, not a color:
 /// this names what a human gets out of a thread, process, node or cluster, and
 /// a surface renders it however it likes (the GUI paints it). It is about the
 /// resource under load, not the machine: it tells an operator whether results

@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_honours_the_limit() {
+    fn recent_honors_the_limit() {
         let mut activity = Activity::default();
         let x = at("x");
         for tick in 0..5 {
