@@ -31,6 +31,12 @@ pub struct Run {
     /// The nodes among them that may assume the internet (ADR-0045).
     #[serde(default)]
     pub online: Vec<String>,
+    /// The nodes among them that are real: each on a machine of its own,
+    /// whose name resolved and which answered as that node, never spawned
+    /// (ADR-0028, amendments 2026-09-19 and 2026-10-21). Every other node
+    /// of `nodes` is simulated, a process the run spawned.
+    #[serde(default)]
+    pub real: Vec<String>,
     /// The stress level's name.
     #[serde(default)]
     pub stress: String,
@@ -54,7 +60,7 @@ pub const fn shown(hidden: bool, including_hidden: bool) -> bool {
     !hidden || including_hidden
 }
 
-/// The four lists of a run, as the header numbers them for a reader that
+/// The five lists of a run, as the header numbers them for a reader that
 /// asks for one at a time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunList {
@@ -62,15 +68,17 @@ pub enum RunList {
     Nodes,
     Roles,
     Online,
+    Real,
 }
 
 impl RunList {
     /// Every list, in the header's order.
-    pub const ALL: [RunList; 4] = [
+    pub const ALL: [RunList; 5] = [
         RunList::Tests,
         RunList::Nodes,
         RunList::Roles,
         RunList::Online,
+        RunList::Real,
     ];
 }
 
@@ -90,6 +98,7 @@ impl Run {
             RunList::Nodes => &self.nodes,
             RunList::Roles => &self.roles,
             RunList::Online => &self.online,
+            RunList::Real => &self.real,
         }
     }
 }
