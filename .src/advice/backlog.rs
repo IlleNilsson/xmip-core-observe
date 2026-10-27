@@ -1,5 +1,5 @@
 //! Advice on a Receive Location that goes one Stream at a time: how many
-//! wait behind it, and that a correlation set would spread them (ADR-0024
+//! wait behind it, and that a Correlation would spread them (ADR-0024
 //! and ADR-0066, amendments 2026-10-22).
 //!
 //! The owner, 2026-10-22: *If I want to open up for parallelism I can use
@@ -26,7 +26,7 @@ pub fn sequence_backlog(scope: &str, location: &str, held: u64) -> Option<Advice
     Some(Advice {
         scope: scope.to_string(),
         said: format!(
-            "{location} carries 1 Stream at a time; {waiting} wait. A correlation set keyed \
+            "{location} carries 1 Stream at a time; {waiting} wait. A Correlation keyed \
              by a context value its Messages carry would spread them."
         ),
         evidence: vec![
