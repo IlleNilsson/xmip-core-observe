@@ -42,8 +42,12 @@ mod tests {
 
     #[test]
     fn a_location_with_streams_waiting_is_advised_to_be_spread() {
-        assert_eq!(sequence_backlog("C1/D1/receive/In", "In", 2), None);
-        let advice = sequence_backlog("C1/D1/receive/In", "In", 341).expect("advised");
+        let scope = format!(
+            "{}/receive/In",
+            configure::fixture::test_cluster().node_scope(0)
+        );
+        assert_eq!(sequence_backlog(&scope, "In", 2), None);
+        let advice = sequence_backlog(&scope, "In", 341).expect("advised");
         assert!(advice.said.contains("340 wait"), "{}", advice.said);
         assert_eq!(advice.evidence[1], ("waiting".to_string(), "340".to_string()));
     }
