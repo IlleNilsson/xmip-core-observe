@@ -12,6 +12,7 @@
 //! `Holding` the rollup only a parent shows (ADR-0041).
 
 pub mod activity;
+pub mod advice;
 pub mod capability;
 pub mod counted;
 pub mod curve;
