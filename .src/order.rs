@@ -4,12 +4,12 @@
 //!
 //! Four things an operator acts on are published by a node: its Event
 //! subscriptions, its Subscriptions, the Messages its Dead Message Queue
-//! keeps and the Journeys it sends ([`Noun`]). The acts and their words are
+//! keeps and the Messages it sends ([`Noun`]). The acts and their words are
 //! written here once ([`Act`]), with which acts each takes: an Event
 //! subscription is paused, resumed or removed; a Subscription is paused or
 //! resumed only, since it is added and removed in the TOML configuration; a
 //! Message in the Dead Message Queue is replayed (ADR-0052, amendment
-//! 2026-10-01); a Journey that failed is retried or dismissed
+//! 2026-10-01); a Message that failed is retried or dismissed
 //! (`runtime-model.md` section 13).
 //!
 //! A surface reading a live node applies an act through the runtime's
@@ -43,9 +43,9 @@ pub enum Act {
     /// Route a Message of the Dead Message Queue again, against the
     /// Subscriptions of now.
     Replay,
-    /// Send a Journey that failed again, from its Send Port's queue.
+    /// Send a Message that failed again, from its Send Port's queue.
     Retry,
-    /// End a Journey that failed, by a decision: Dismissed, its history
+    /// End a Message that failed, by a decision: Dismissed, its history
     /// kept.
     Dismiss,
 }
@@ -90,8 +90,8 @@ pub enum Noun {
     Subscription,
     /// A Message in its node's Dead Message Queue, by its identifier.
     DeadMessage,
-    /// A Journey a node sends, by its identifier.
-    Journey,
+    /// A Message a node sends, by its Journey's identifier.
+    Message,
 }
 
 impl Noun {
@@ -100,7 +100,7 @@ impl Noun {
         Self::EventSubscription,
         Self::Subscription,
         Self::DeadMessage,
-        Self::Journey,
+        Self::Message,
     ];
 
     /// The word an order names it by.
@@ -110,7 +110,7 @@ impl Noun {
             Self::EventSubscription => "event-subscription",
             Self::Subscription => "subscription",
             Self::DeadMessage => "dead-message",
-            Self::Journey => "journey",
+            Self::Message => "message",
         }
     }
 
@@ -127,7 +127,7 @@ impl Noun {
             Self::EventSubscription => &[Act::Pause, Act::Resume, Act::Remove],
             Self::Subscription => &[Act::Pause, Act::Resume],
             Self::DeadMessage => &[Act::Replay],
-            Self::Journey => &[Act::Retry, Act::Dismiss],
+            Self::Message => &[Act::Retry, Act::Dismiss],
         }
     }
 
@@ -162,7 +162,7 @@ impl Noun {
             Self::EventSubscription => "event",
             Self::Subscription => "subscription",
             Self::DeadMessage => "dead-message",
-            Self::Journey => "journey",
+            Self::Message => "message",
         };
         format!("{noun}.{}", act.word())
     }
@@ -174,7 +174,7 @@ impl Noun {
             Self::EventSubscription => "an Event subscription",
             Self::Subscription => "a Subscription",
             Self::DeadMessage => "a Message in the Dead Message Queue",
-            Self::Journey => "a Journey",
+            Self::Message => "a Message that failed",
         }
     }
 }
@@ -186,7 +186,8 @@ pub struct Order {
     pub node: String,
     pub noun: Noun,
     /// Which one: an Event subscription's number, a Subscription's name, a
-    /// Message's or a Journey's identifier.
+    /// Message's identifier in the Dead Message Queue, or a failed Message's
+    /// Journey's identifier.
     pub target: String,
     pub act: Act,
     /// Who acted, for the audit record.
@@ -347,16 +348,16 @@ mod tests {
         assert!(paused.contains("the acts are replay"), "{paused}");
         assert!(Noun::Subscription.act("replay").is_err());
         assert!(Noun::EventSubscription.act("replay").is_err());
-        assert_eq!(Noun::Journey.act("retry"), Ok(Act::Retry));
-        assert_eq!(Noun::Journey.act("dismiss"), Ok(Act::Dismiss));
-        assert_eq!(Noun::Journey.action(Act::Dismiss), "journey.dismiss");
-        let replayed = Noun::Journey.act("replay").expect_err("refused");
+        assert_eq!(Noun::Message.act("retry"), Ok(Act::Retry));
+        assert_eq!(Noun::Message.act("dismiss"), Ok(Act::Dismiss));
+        assert_eq!(Noun::Message.action(Act::Dismiss), "message.dismiss");
+        let replayed = Noun::Message.act("replay").expect_err("refused");
         assert!(
             replayed.contains("the acts are retry, dismiss"),
             "{replayed}"
         );
         assert!(Noun::DeadMessage.act("retry").is_err());
-        assert_eq!(Noun::named("journey"), Some(Noun::Journey));
+        assert_eq!(Noun::named("message"), Some(Noun::Message));
     }
 
     #[test]

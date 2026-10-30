@@ -4,7 +4,8 @@
 //! A publisher and its readers are separate processes, and the bridge
 //! between them is a file. Its shape — `source`, `node`, `orders`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
-//! `[[unheard]]`, `[[dead_messages]]`, `[[failed_journeys]]`, and a roll's `[run]` and `[topology]` — was written by the
+//! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`, and a roll's `[run]` and
+//! `[topology]` — was written by the
 //! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
 //! Playground, `xmip-service` — writes through [`Publication::write`], the
@@ -34,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use crate::counted::Counted;
 use crate::dead_message::DeadMessage;
 use crate::event_subscription::{EventSubscription, EventSubscriptionDocument};
-use crate::failed_journey::FailedJourneys;
+use crate::failed_message::FailedMessages;
 use crate::health::Health;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
@@ -67,9 +68,9 @@ pub struct Publication {
     pub unheard: Vec<Unheard>,
     /// What the Dead Message Queues of the nodes beneath `node` keep.
     pub dead_messages: Vec<DeadMessage>,
-    /// The Journeys that failed at the Send Ports of the nodes beneath
+    /// The Messages that failed at the Send Ports of the nodes beneath
     /// `node`: how many at each, and the oldest.
-    pub failed_journeys: Vec<FailedJourneys>,
+    pub failed_messages: Vec<FailedMessages>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -95,7 +96,7 @@ impl Publication {
             event_subscriptions: snapshot.event_subscriptions().cloned().collect(),
             unheard: snapshot.unheard().cloned().collect(),
             dead_messages: snapshot.dead_messages().cloned().collect(),
-            failed_journeys: snapshot.failed_journeys().cloned().collect(),
+            failed_messages: snapshot.failed_messages().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -156,7 +157,7 @@ impl Publication {
                 .collect(),
             unheard: self.unheard.iter().map(UnheardDocument::of).collect(),
             dead_messages: self.dead_messages.clone(),
-            failed_journeys: self.failed_journeys.clone(),
+            failed_messages: self.failed_messages.clone(),
             run: self.run.clone(),
             topology: self.topology.clone(),
         };
@@ -241,7 +242,7 @@ impl Publication {
                 .map(UnheardDocument::into_unheard)
                 .collect(),
             dead_messages: document.dead_messages,
-            failed_journeys: document.failed_journeys,
+            failed_messages: document.failed_messages,
             run: document.run,
             topology,
         })
@@ -270,8 +271,8 @@ impl Publication {
         for dead in &self.dead_messages {
             snapshot.record_dead_message(dead.clone());
         }
-        for failed in &self.failed_journeys {
-            snapshot.record_failed_journeys(failed.clone());
+        for failed in &self.failed_messages {
+            snapshot.record_failed_messages(failed.clone());
         }
         snapshot
     }
@@ -330,7 +331,7 @@ struct Document {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     dead_messages: Vec<DeadMessage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    failed_journeys: Vec<FailedJourneys>,
+    failed_messages: Vec<FailedMessages>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

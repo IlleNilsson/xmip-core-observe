@@ -52,20 +52,20 @@ node's Dead Message Queue keeps (`DeadMessage`: node, Message, place, Receive
 Location, time, gate verdicts, promoted properties and every Subscription's
 decline; ADR-0052, amendment 2026-10-01), kept by node and place
 (`Snapshot::record_dead_message`), as `[[dead_messages]]`; and, for every
-Send Port a node sends, the Journeys that failed waiting in its queue now —
+Send Port a node sends, the Messages that failed waiting in its queue now —
 how many, zero where none, whether one blocks its sequence, and the oldest
 with why — apart from the last that failed there since the node started,
-which is history (`FailedJourneys`: node, Send Port, `count`, `blocked`, each
-`FailedJourney`'s identifier, place and reason, and `last_failure`;
+which is history (`FailedMessages`: node, Send Port, `count`, `blocked`, each
+`FailedMessage`'s identifier, place and reason, and `last_failure`;
 `runtime-model.md` section 13), kept by node and Port
-(`Snapshot::record_failed_journeys`), as `[[failed_journeys]]`. `orders` is the
+(`Snapshot::record_failed_messages`), as `[[failed_messages]]`. `orders` is the
 directory where its publisher takes an operator's act on any of them:
 `Order` writes and takes the file, `Act` names pause, resume, remove,
 replay, retry and dismiss once, and `Noun` says which acts each takes — an
 Event subscription pause, resume and remove, a Subscription pause and resume
 only, since it is added and removed in the TOML configuration, a Message in
-the Dead Message Queue (`dead-message`) replay only, and a Journey that
-failed (`journey`, by its identifier) retry and dismiss (`runtime-model.md`
+the Dead Message Queue (`dead-message`) replay only, and a Message that
+failed (`message`, by its Journey's identifier) retry and dismiss (`runtime-model.md`
 section 13, built 2026-10-04).
 
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
