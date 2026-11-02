@@ -1,6 +1,6 @@
 //! Advice: what the operations surfaces suggest, the one shape every
 //! subject's advice takes and every surface shows (the owner, 2026-10-22:
-//! *We have to be lenient to people that does not know all languages, the
+//! *We have to be lenient to people who do not know all languages, the
 //! operations views just have to report it, suggest improvements*).
 //! Nothing advised is refused: advice says what is costly and what would do
 //! the same work for less, in words, beside the figures it was read from.
