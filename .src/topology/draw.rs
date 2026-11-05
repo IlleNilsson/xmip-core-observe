@@ -8,15 +8,15 @@
 //! because its publisher names it; a stage because the node declared it
 //! (ADR-0056: its record at [`crate::capability::scope`]) or reported on it;
 //! an endpoint because a record sits beneath the stage, one per segment
-//! after it — the Playground's transports, a service node's Locations. A
+//! after it — the Essentials' transports, a service node's Locations. A
 //! drawn thing above its leaves is Fine or Holding (`Health::rolled`,
 //! ADR-0041).
 //!
-//! Drawn here once, for every publisher: the Playground's roll draws its
+//! Drawn here once, for every publisher: the Essentials' roll draws its
 //! cluster through it and adds its handoffs and its shared store, and a
 //! running node (`xmip-core-runtime`'s `Running::publication`) draws itself
 //! through it; the Parties outside the nodes are [`super::party`]'s. Until
-//! 2026-09-30 the Playground held this drawing, and no other publisher drew
+//! 2026-09-30 the Essentials held this drawing, and no other publisher drew
 //! a topology at all.
 
 use std::collections::BTreeSet;

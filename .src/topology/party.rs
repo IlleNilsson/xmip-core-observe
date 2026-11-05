@@ -9,7 +9,7 @@
 //! endpoints beneath the stage, and says which endpoint that was.
 //!
 //! Which Parties there are, and over which transports each is reached on
-//! each side, is the publisher's to say ([`Party`]): the Playground's are its
+//! each side, is the publisher's to say ([`Party`]): the Essentials' are its
 //! configuration's `[[parties]]`, each on its share of the transports
 //! (ADR-0028, amendment 2026-10-13); a running node's is `any-party`, over
 //! every endpoint, while its publication does not say which Parties a

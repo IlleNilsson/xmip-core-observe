@@ -30,7 +30,7 @@ here too, once for every publisher (ADR-0052, amendment 2026-09-30):
 `topology::draw` draws a cluster, its nodes, their declared or reported
 stages and an endpoint per segment beneath a stage, each Fine or Holding
 over its worst leaf; `topology::party` adds the Party on each side a stage
-faces, linked with what the stage counted. The Playground's roll and a
+faces, linked with what the stage counted. The Essentials' roll and a
 running node (the runtime's `Running::publication`, which `xmip-service`
 writes) both draw through them. A node's throughput over time is `Curve`, the history file, and the
 recent items beneath a scope are `Recent`, the activity file; each is
@@ -100,7 +100,7 @@ forwards each to the surfaces over `xmip_operate.h` sections 7 and 8 — a
 publication and a curve are read by the runtime and handed over as the
 header's values —
 and `Xmip.Surface`, the PowerShell module and the GUI call those exports
-rather than keep a copy; the Playground writes and reads its files through
+rather than keep a copy; the Essentials writes and reads its files through
 `Publication` (ADR-0052, amendments 2026-09-24).
 
 ## What an operator's own monitoring reads
@@ -124,4 +124,4 @@ in its own format:
 | [`prometheus`](https://github.com/IlleNilsson/xmip-core-observe-prometheus) | A scrape endpoint in the text exposition format 0.0.4, rendered at each scrape from the last snapshot |
 
 `doc/architecture/observability-model.md` sections 6 and 7 govern it, and
-`architecture.toml` names the technologies.
+`architecture.xmip` names the technologies.

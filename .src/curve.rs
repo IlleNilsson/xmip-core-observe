@@ -4,9 +4,9 @@
 //! [`History`] keeps the series in memory; a publisher writes the node's own
 //! series of the kinds an operator watches over time to a file, and a surface
 //! reads it back. The file's shape — `node` and `[[points]]` of `counted`,
-//! `observed_unix_nanos` and `value` — was written by the Playground and
+//! `observed_unix_nanos` and `value` — was written by the Essentials and
 //! walked again by the estate's `Get-XmipHistory` until 2026-09-24 (open
-//! problem 25). It has one home now: the Playground writes through
+//! problem 25). It has one home now: the Essentials writes through
 //! [`Curve::to_toml`], and a surface reads through [`Curve::read`] in the
 //! runtime's library (`xmip_curve_read_v1`, `xmip_operate.h` section 8).
 //!

@@ -3,7 +3,7 @@
 //!
 //! [`Activity`] keeps the items in memory; a publisher writes the most recent
 //! beneath its scope to a file — `node` and `[[items]]` of `kind`, `scope`,
-//! `id`, `bytes`, `detail` and `observed_unix_nanos`. The Playground wrote
+//! `id`, `bytes`, `detail` and `observed_unix_nanos`. The Essentials wrote
 //! that shape with its own copy of the item kinds' words until 2026-09-24
 //! (open problem 25); the words are [`ItemKind::name`]'s and the shape is
 //! this file's.

@@ -2,7 +2,7 @@
 //! the message path counts: ADR-0027 clause 5, once.
 //!
 //! The words are what a publication writes and a surface reads; they were
-//! written by the Playground and parsed again by `Xmip.Surface` until
+//! written by the Essentials and parsed again by `Xmip.Surface` until
 //! 2026-09-24 (open problem 25). The runtime's cdylib forwards them to a
 //! surface over `xmip_operate.h` section 7 (`xmip_counted_word_v1`,
 //! `xmip_stage_counted_v1`), and a publication's reader is

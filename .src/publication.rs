@@ -6,15 +6,15 @@
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
 //! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`, and a roll's `[run]` and
 //! `[topology]` — was written by the
-//! Playground and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
+//! Essentials and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
-//! Playground, `xmip-service` — writes through [`Publication::write`], the
-//! Playground reads its nodes' files back through [`Publication::read`], and
+//! Essentials, `xmip-service` — writes through [`Publication::write`], the
+//! Essentials reads its nodes' files back through [`Publication::read`], and
 //! a surface reads through the same function in the runtime's library
 //! (`xmip_publication_read_v1`, `xmip_operate.h` section 8).
 //!
 //! **Written whole or not at all** ([`write_atomic`]): a reader sees the
-//! previous file or the next, never a torn one. The Playground wrote it so
+//! previous file or the next, never a torn one. The Essentials wrote it so
 //! alone until 2026-09-30, when `xmip-service` began to publish too
 //! (ADR-0018, amendment 2026-09-30).
 //!
@@ -286,7 +286,7 @@ impl Publication {
 /// and an activity file of the right length and nothing but zeros in them,
 /// and the prompt said unavailable for two days (2026-09-16). Every file a
 /// surface reads a publisher's state from is written this way — the
-/// publication, and the Playground's history and activity beside it.
+/// publication, and the Essentials' history and activity beside it.
 ///
 /// # Errors
 ///
@@ -299,7 +299,7 @@ pub fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
 
     // Its own temporary file: two processes publishing to one path must not
     // write into each other's half-finished file.
-    let temp = path.with_extension(format!("toml.writing-{}", std::process::id()));
+    let temp = path.with_extension(format!("xmip.writing-{}", std::process::id()));
     let mut file = std::fs::File::create(&temp)?;
     file.write_all(contents.as_bytes())?;
     file.sync_all()?;
@@ -434,7 +434,7 @@ mod tests {
         let node = node();
         let mut summed = published();
         summed.record_count(count(&node, Counted::Bytes, 40));
-        let text = Publication::whole("playground", &node, &summed).to_toml();
+        let text = Publication::whole("essentials", &node, &summed).to_toml();
         assert!(text.contains("state = \"done\""), "{text}");
         assert!(text.contains("counted = \"streams\""), "{text}");
         assert!(!text.contains(&format!("scope = \"{node}\"")), "{text}");
@@ -547,7 +547,7 @@ mod tests {
     fn a_publication_is_written_whole_and_reads_back() {
         let path = std::env::temp_dir()
             .join(format!("xmip-publication-{}", std::process::id()))
-            .join("snapshot.toml");
+            .join("snapshot.xmip");
         std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 
         let written = Publication::whole("n", &node(), &published()).with_orders("orders");
