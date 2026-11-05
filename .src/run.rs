@@ -5,7 +5,7 @@
 //! which nodes, which of them online, or how hard — so a board could not be
 //! told from the one before it. A publisher that runs tests says it; a node
 //! writes none, and a reader that finds no table shows nothing for it. The
-//! Playground held this shape until 2026-09-24 and `Xmip.Surface` read it
+//! Essentials held this shape until 2026-09-24 and `Xmip.Surface` read it
 //! again (open problem 25); the surfaces now read it through the runtime's
 //! publication reader (`xmip_operate.h` section 8).
 

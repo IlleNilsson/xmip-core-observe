@@ -4,7 +4,7 @@
 //!
 //! The declaration and its evidence are `node::Capability`'s; where it sits
 //! in the snapshot is the snapshot's, and is said here once. A publisher
-//! writes the record at [`scope`], and every reader — the Playground drawing
+//! writes the record at [`scope`], and every reader — the Essentials drawing
 //! a node's stages, a surface listing what each node declared — reads it by
 //! [`declared`], which the runtime's cdylib forwards as
 //! `xmip_capability_published_v1` (`xmip_operate.h` section 7).
