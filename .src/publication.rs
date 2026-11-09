@@ -302,7 +302,7 @@ pub fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
     let temp = path.with_extension(format!("xmip.writing-{}", std::process::id()));
     let mut file = std::fs::File::create(&temp)?;
     file.write_all(contents.as_bytes())?;
-    file.sync_all()?;
+    xcore::spent::on_sync(|| file.sync_all())?;
     drop(file);
     std::fs::rename(&temp, path)
 }
