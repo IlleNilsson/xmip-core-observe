@@ -124,4 +124,4 @@ in its own format:
 | [`prometheus`](https://github.com/IlleNilsson/xmip-core-observe-prometheus) | A scrape endpoint in the text exposition format 0.0.4, rendered at each scrape from the last snapshot |
 
 `doc/architecture/observability-model.md` sections 6 and 7 govern it, and
-`architecture.xmip` names the technologies.
+`architecture.toml` names the technologies.
