@@ -19,7 +19,7 @@
 //! node, told by its operating system that the directory changed, takes it
 //! and applies it as any act is applied. The
 //! file, its place and its shape are written here once:
-//! `<orders>/<node name>/<unix nanos>-<sequence>-<act>.xmip`, written whole
+//! `<orders>/<node name>/<unix nanos>-<sequence>-<act>.toml`, written whole
 //! beside itself and renamed into place, so a node never reads half of one.
 
 use std::fs;
@@ -217,7 +217,7 @@ impl Order {
         let place = Self::place(orders, &self.node)?;
         fs::create_dir_all(&place).map_err(|error| failed(&place, &error))?;
         let name = format!(
-            "{}-{:06}-{}.xmip",
+            "{}-{:06}-{}.toml",
             crate::now_unix_nanos(),
             SEQUENCE.fetch_add(1, Ordering::Relaxed) % 1_000_000,
             self.act.word()
@@ -253,7 +253,7 @@ impl Order {
             .map(|entry| entry.path())
             .filter(|path| {
                 path.extension()
-                    .is_some_and(|extension| extension == "xmip")
+                    .is_some_and(|extension| extension == "toml")
             })
             .collect();
         files.sort();
@@ -391,7 +391,7 @@ mod tests {
         let place = at.join(&cluster.node(0).name);
         fs::create_dir_all(&place).expect("made");
         fs::write(
-            place.join("1-1-remove.xmip"),
+            place.join("1-1-remove.toml"),
             format!(
                 "node = \"{}\"\nnoun = \"subscription\"\ntarget = \"t\"\nact = \"remove\"\n\
                  who = \"w\"\n",
