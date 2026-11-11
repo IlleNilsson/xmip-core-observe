@@ -22,7 +22,7 @@ pub struct Unheard {
 
 impl Unheard {
     /// The line an operator reads: *not hearing `<node>` since `<time>`:
-    /// `<why>*, the time as RFC 3339 to the second. Every surface says it
+    /// `<why>`*, the time as RFC 3339 to the second. Every surface says it
     /// in these words.
     #[must_use]
     pub fn said(&self) -> String {

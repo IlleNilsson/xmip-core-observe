@@ -10,7 +10,9 @@
 //! an endpoint because a record sits beneath the stage, one per segment
 //! after it — the Essentials' transports, a service node's Locations. A
 //! drawn thing above its leaves is Fine or Holding (`Health::rolled`,
-//! ADR-0041).
+//! ADR-0041). Everything is drawn still, its activity zero: what moved
+//! through it is stated by its publisher's [`super::window::Window`], never
+//! by whether it is alive (ADR-0052, amendment 2026-11-10).
 //!
 //! Drawn here once, for every publisher: the Essentials' roll draws its
 //! cluster through it and adds its handoffs and its shared store, and a
@@ -24,7 +26,7 @@ use std::collections::BTreeSet;
 use node::{Capability, Stage};
 
 use crate::health::Health;
-use crate::scope::Scope;
+use crate::scope::{NODE, Scope};
 use crate::snapshot::{HealthRecord, Snapshot};
 use crate::topology::{NodeKind, Origin, TopologyNode};
 
@@ -110,18 +112,11 @@ pub fn fraction(part: usize, whole: usize) -> f64 {
     }
 }
 
-/// Whether the record at the node's [`system_process`] says it runs.
-#[must_use]
-pub fn alive(snapshot: &Snapshot, node_scope: &str) -> bool {
-    worst(snapshot, &system_process(node_scope))
-        .is_some_and(|record| record.evidence.starts_with(ALIVE))
-}
-
 /// The cluster at `root` and every node named, each followed by its stages
 /// and their endpoints, in the order named.
 #[must_use]
 pub fn members(snapshot: &Snapshot, root: &str, names: &[&str]) -> Vec<TopologyNode> {
-    let mut drawn = vec![cluster(snapshot, root, names)];
+    let mut drawn = vec![cluster(snapshot, root)];
     for name in names {
         let scope = format!("{root}/node/{name}");
         drawn.push(node(snapshot, name, &scope));
@@ -130,15 +125,18 @@ pub fn members(snapshot: &Snapshot, root: &str, names: &[&str]) -> Vec<TopologyN
     drawn
 }
 
-/// The cluster: its mood the rollup over its nodes, its activity the share
-/// of them running.
+/// Where the cluster at `root` is read, its mood and what moved through it
+/// alike: beneath its nodes, `<root>/node`, never what a test run at the
+/// cluster itself recorded.
 #[must_use]
-pub fn cluster(snapshot: &Snapshot, root: &str, names: &[&str]) -> TopologyNode {
-    let (state, evidence) = drawn(worst(snapshot, &format!("{root}/node")).as_ref(), root);
-    let running = names
-        .iter()
-        .filter(|name| alive(snapshot, &format!("{root}/node/{name}")))
-        .count();
+pub fn node_rollup(root: &str) -> String {
+    format!("{}/{NODE}", root.trim_end_matches('/'))
+}
+
+/// The cluster: its mood the rollup over its nodes.
+#[must_use]
+pub fn cluster(snapshot: &Snapshot, root: &str) -> TopologyNode {
+    let (state, evidence) = drawn(worst(snapshot, &node_rollup(root)).as_ref(), root);
     TopologyNode {
         id: CLUSTER.to_string(),
         parent: String::new(),
@@ -148,7 +146,7 @@ pub fn cluster(snapshot: &Snapshot, root: &str, names: &[&str]) -> TopologyNode 
         state,
         origin: Origin::Configured,
         load: 0.0,
-        activity: fraction(running, names.len()),
+        activity: 0.0,
         evidence,
     }
 }
@@ -166,7 +164,7 @@ pub fn node(snapshot: &Snapshot, name: &str, scope: &str) -> TopologyNode {
         state,
         origin: origin(snapshot, scope),
         load: 0.0,
-        activity: if alive(snapshot, scope) { 1.0 } else { 0.0 },
+        activity: 0.0,
         evidence,
     }
 }
@@ -320,7 +318,13 @@ mod tests {
                 (process.as_str(), "stage", node.as_str()),
             ]
         );
-        assert!((drawn[0].activity - 1.0).abs() < f64::EPSILON, "alive");
+        // Alive, and drawn still: what moves is its window's to state.
+        assert!(
+            drawn
+                .iter()
+                .all(|drawn| drawn.activity.abs() < f64::EPSILON),
+            "{drawn:?}"
+        );
         assert_eq!(drawn[3].state, Health::Stressed, "the endpoint's own");
         assert_eq!(drawn[2].state, Health::Holding, "a parent rolls up");
         assert_eq!(

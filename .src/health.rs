@@ -289,19 +289,19 @@ mod tests {
 
     #[test]
     fn a_sort_puts_the_worst_first() {
-        let (a, d, e, h, p) = (at("a"), at("d"), at("e"), at("h"), at("p"));
+        let [fine, holding, done, severe, paused] = ["a", "h", "d", "e", "p"].map(at);
         let mut records = [
-            standing(Health::Fine, 0, &a),
-            standing(Health::Holding, 0, &h),
-            standing(Health::Done, 60, &d),
-            standing(Health::Done, 90, &e),
-            standing(Health::Paused, 30, &p),
+            standing(Health::Fine, 0, &fine),
+            standing(Health::Holding, 0, &holding),
+            standing(Health::Done, 60, &done),
+            standing(Health::Done, 90, &severe),
+            standing(Health::Paused, 30, &paused),
         ];
         records.sort();
 
         assert_eq!(
             records.map(|record| record.scope),
-            [&h, &e, &d, &p, &a].map(String::as_str)
+            [&holding, &severe, &done, &paused, &fine].map(String::as_str)
         );
     }
 }
