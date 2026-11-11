@@ -22,17 +22,29 @@ writes it (`whole`: every count at the scope it was recorded at, so a
 reader sums what is beneath any scope — a roll's file and a node's alike) and reads
 it back, with the records, the counts, what the run was started with (`Run`)
 and the communication topology (`topology`: its nodes, links and their
-words, each value's `word` and the `name` a person reads it by, and a link's rate over two readings, `Topology::rate_since`, which the
-publisher states and no surface computes). `Publication::write` writes
+words, each value's `word` and the `name` a person reads it by). What moved
+is `topology::window::Window`'s, which the publisher keeps and no surface
+computes: over its earlier readings of the last thirty seconds it states on
+each drawing every link's rate and every drawn thing's activity, per
+second — the most of the Streams, Journeys or Messages counted on a stage
+of the message path (`Scope::stage`) at and beneath it, never a test's
+gauge beneath a node, the cluster's beneath its nodes, or the more of what
+its links carried in or out — zero where nothing moved, a figure that fell measured from its
+fall, and a clock that steps back starting the window over (ADR-0052,
+amendment 2026-11-10). It keeps about one reading a second in the
+drawing's own order and reads a round in one pass; the module's timing
+program (`tests/measured`, run alone at landing) holds a drawing of 1,201
+things, 3,000 counts and 1,000 links under a millisecond. `Publication::write` writes
 it whole or not at all, by `publication::write_atomic`, the one writer of
 every file a surface reads a publisher's state from. The topology is drawn
 here too, once for every publisher (ADR-0052, amendment 2026-09-30):
 `topology::draw` draws a cluster, its nodes, their declared or reported
 stages and an endpoint per segment beneath a stage, each Fine or Holding
-over its worst leaf; `topology::party` adds the Party on each side a stage
-faces, linked with what the stage counted. The Essentials' roll and a
-running node (the runtime's `Running::publication`, which `xmip-service`
-writes) both draw through them. A node's throughput over time is `Curve`, the history file, and the
+over its worst leaf and still until a window states what moved;
+`topology::party` adds the Party on each side a stage faces, linked with
+what the stage counted. The Essentials' roll and a running node (the
+runtime's `Running::publication`, which `xmip-service` writes) both draw
+through them, and each states its drawing over a window of its own. A node's throughput over time is `Curve`, the history file, and the
 recent items beneath a scope are `Recent`, the activity file; each is
 written and read here, as a publication is. What a reader does not know it
 decides here once — an unknown mood

@@ -17,9 +17,14 @@
 //! A word a reader does not know reads as the kind's fallback — a computer,
 //! both origins, a send-receive exchange — so an unfamiliar publication still
 //! draws, and the one reader decides that once.
+//!
+//! What moved is stated on the drawing by its publisher, over a window of
+//! its own earlier readings ([`window`]): each link's rate and each drawn
+//! thing's activity, per second.
 
 pub mod draw;
 pub mod party;
+pub mod window;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -187,34 +192,10 @@ pub struct Topology {
     pub links: Vec<TopologyLink>,
 }
 
-impl Topology {
-    /// Each link's rate, per second, over the time since `previous` was
-    /// observed: the rise in its volume between the two, divided by the
-    /// seconds between them. The publisher states it, once, where both
-    /// readings are; a surface draws what was stated (ADR-0052, amendment
-    /// 2026-09-25). A link `previous` did not carry, a volume that fell — its
-    /// publisher started over — and two readings with no time between them
-    /// leave the rate as it was: no interval is no rate, never a zero one.
-    pub fn rate_since(&mut self, previous: &Self) {
-        let nanos = self.observed_unix_nanos - previous.observed_unix_nanos;
-        if nanos <= 0 {
-            return;
-        }
-        #[allow(clippy::cast_precision_loss)] // a rate is a figure to read, not a count
-        let seconds = nanos as f64 / 1e9;
-        for link in &mut self.links {
-            let before = previous.links.iter().find(|before| before.id == link.id);
-            if let Some(rise) = before.and_then(|before| link.volume.checked_sub(before.volume)) {
-                #[allow(clippy::cast_precision_loss)]
-                let rise = rise as f64;
-                link.rate = rise / seconds;
-            }
-        }
-    }
-}
-
-/// One thing that communicates. `parent` is empty at the top; load and
-/// activity run from zero to one.
+/// One thing that communicates. `parent` is empty at the top; load runs
+/// from zero to one. `activity` is what moved through it, per second, over
+/// its publisher's [`window::Window`]: zero when nothing moved, as drawn
+/// until a window states it (ADR-0052, amendment 2026-11-10).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TopologyNode {
     #[serde(default)]
@@ -239,7 +220,9 @@ pub struct TopologyNode {
     pub evidence: String,
 }
 
-/// One communication relationship, `from` one node id `to` another.
+/// One communication relationship, `from` one node id `to` another. `rate`
+/// is the rise in its volume per second over its publisher's
+/// [`window::Window`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TopologyLink {
     #[serde(default)]
@@ -304,70 +287,6 @@ mod tests {
         assert_eq!(Pattern::default(), Pattern::SendReceive);
     }
 
-    fn link(id: &str, volume: u64) -> TopologyLink {
-        let cluster = test_cluster();
-        TopologyLink {
-            id: id.to_string(),
-            from: format!("node/{}/receive", cluster.with_role("receiving").name),
-            to: format!("node/{}/process", cluster.with_role("processing").name),
-            pattern: Pattern::SendReceive,
-            origin: Origin::Both,
-            protocol: "handoff".to_string(),
-            state: Health::Fine,
-            volume,
-            rate: 0.0,
-            latency_ms: 0.0,
-            progress: 0.0,
-            attempts: 0,
-            evidence: String::new(),
-        }
-    }
-
-    fn at(nanos: i64, links: Vec<TopologyLink>) -> Topology {
-        Topology {
-            observed_unix_nanos: nanos,
-            links,
-            ..Topology::default()
-        }
-    }
-
-    #[test]
-    fn a_links_rate_is_its_rise_over_the_seconds_between_two_readings() {
-        let before = at(
-            1_000_000_000,
-            vec![link("a", 10), link("fell", 50), link("idle", 4)],
-        );
-        let mut now = at(
-            3_000_000_000,
-            vec![
-                link("a", 30),
-                link("fell", 5),
-                link("idle", 4),
-                link("new", 7),
-            ],
-        );
-        now.rate_since(&before);
-        for (link, rate) in now.links.iter().zip([10.0, 0.0, 0.0, 0.0]) {
-            assert!(
-                (link.rate - rate).abs() < f64::EPSILON,
-                "{}: {}",
-                link.id,
-                link.rate
-            );
-        }
-
-        // No interval is no rate: what was stated stays.
-        let mut again = at(
-            3_000_000_000,
-            vec![TopologyLink {
-                rate: 2.5,
-                ..link("a", 90)
-            }],
-        );
-        again.rate_since(&now);
-        assert!((again.links[0].rate - 2.5).abs() < f64::EPSILON);
-    }
-
     #[test]
     fn a_node_crosses_toml_by_its_words() {
         let cluster = test_cluster();
@@ -381,7 +300,7 @@ mod tests {
             state: Health::Stressed,
             origin: Origin::Configured,
             load: 0.0,
-            activity: 1.0,
+            activity: 2.5,
             evidence: String::new(),
         };
         let text = toml::to_string(&node).expect("writes");
