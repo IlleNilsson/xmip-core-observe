@@ -183,26 +183,34 @@ pub fn stages(snapshot: &Snapshot, name: &str, scope: &str) -> Vec<TopologyNode>
             continue;
         }
         let id = format!("{}/{}", node_id(name), stage.name());
+        // Labeled by its title, Work Process for the process stage; the id
+        // and the scope keep the word (ADR-0027, amendment 2026-11-11).
         drawn.push(part(
             snapshot,
             &id,
             &node_id(name),
-            stage.name(),
+            stage.title(),
             NodeKind::Stage,
             &at,
         ));
-        // A process stage touches no transport: it has no endpoints.
-        if stage != Stage::Process {
-            for endpoint in endpoints(snapshot, &at) {
-                drawn.push(part(
-                    snapshot,
-                    &format!("{id}/{endpoint}"),
-                    &id,
-                    &endpoint,
-                    NodeKind::Endpoint,
-                    &format!("{at}/{endpoint}"),
-                ));
-            }
+        // Beneath receive and send each Location or Port it reported on;
+        // beneath the process stage each Subscription the node published
+        // it routes by, which a Receive Location feeds, and nothing else
+        // its scopes hold (ADR-0018, amendment 2026-11-11).
+        let beneath = if stage == Stage::Process {
+            routed_by(snapshot, scope)
+        } else {
+            endpoints(snapshot, &at)
+        };
+        for endpoint in beneath {
+            drawn.push(part(
+                snapshot,
+                &format!("{id}/{endpoint}"),
+                &id,
+                &endpoint,
+                NodeKind::Endpoint,
+                &format!("{at}/{endpoint}"),
+            ));
         }
     }
     drawn
@@ -238,6 +246,16 @@ fn endpoints(snapshot: &Snapshot, stage_scope: &str) -> BTreeSet<String> {
         .filter_map(|rest| rest.split('/').next())
         .filter(|endpoint| !endpoint.is_empty())
         .map(str::to_string)
+        .collect()
+}
+
+/// The Subscriptions the node at `scope` published it routes by, by name,
+/// once each: what its process stage is drawn holding (`Subscription`).
+fn routed_by(snapshot: &Snapshot, scope: &str) -> BTreeSet<String> {
+    snapshot
+        .subscriptions()
+        .filter(|subscription| Scope::new(&subscription.node) == Scope::new(scope))
+        .map(|subscription| subscription.name.clone())
         .collect()
 }
 
@@ -332,6 +350,30 @@ mod tests {
             Origin::Configured,
             "declared, not reported"
         );
+        assert_eq!(
+            [drawn[2].label.as_str(), drawn[4].label.as_str()],
+            ["Receive", "Work Process"],
+            "a stage reads by its title, never a bare Process"
+        );
+
+        // A Subscription the node published is drawn beneath its process
+        // stage, as a Location is beneath receive; whatever else a scope
+        // beneath the stage holds — a transport's name — is not.
+        for leaf in ["Invoices", "tcp"] {
+            snapshot.record_health(record(&format!("{scope}/process/{leaf}"), Health::Fine, ""));
+        }
+        snapshot.record_subscription(crate::Subscription {
+            node: scope.clone(),
+            name: "Invoices".into(),
+            ..crate::Subscription::default()
+        });
+        let drawn = members(&snapshot, &root, &[name]);
+        let beneath: Vec<&str> = drawn
+            .iter()
+            .filter(|one| one.parent == process)
+            .map(|one| one.label.as_str())
+            .collect();
+        assert_eq!(beneath, ["Invoices"], "{drawn:?}");
         assert_eq!(system_process(&scope), format!("{scope}/system-process"));
     }
 }

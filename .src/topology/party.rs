@@ -16,6 +16,8 @@
 //! Location's `accept.party` takes (ADR-0018, amendment 2026-09-30; open
 //! problem 33). Drawn here once for both.
 
+use std::collections::BTreeSet;
+
 use node::Stage;
 
 use super::draw::{CLUSTER, drawn, mood, node_id, worst};
@@ -23,9 +25,16 @@ use crate::counted::Counted;
 use crate::snapshot::{HealthRecord, Snapshot};
 use crate::topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
 
-/// A Party to draw, and the endpoints — by the transport each is labeled
-/// with — it is reached over on each side. `None` on a side is every
-/// endpoint a stage holds; an empty list is not on that side.
+/// The Party drawn on each side of a node whose publication cannot say which
+/// Parties its Locations take (open problem 33): a running node's, and a
+/// node a roll reads rather than simulates.
+pub const ANY_PARTY: &str = "any-party";
+
+/// A Party to draw, and the endpoints — by the label each is drawn with —
+/// it is reached over on each side. `None` on a side is every endpoint a
+/// stage holds; an empty list is not on that side. Where the endpoints are
+/// a running node's Locations, `transports` says which transport each is
+/// reached over, by its name: a link says that, never a Location's name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Party<'a> {
     pub name: &'a str,
@@ -33,6 +42,9 @@ pub struct Party<'a> {
     pub sends: Option<&'a [String]>,
     /// What the send stages deliver to it over.
     pub receives: Option<&'a [String]>,
+    /// Each Location by its name, and the transport its address chose:
+    /// empty where the endpoints are transports themselves.
+    pub transports: &'a [(String, String)],
 }
 
 impl<'a> Party<'a> {
@@ -43,6 +55,20 @@ impl<'a> Party<'a> {
             name,
             sends: None,
             receives: None,
+            transports: &[],
+        }
+    }
+
+    /// `name`, on both sides over every Location, each reached over the
+    /// transport `transports` names it with: a running node's Party
+    /// (ADR-0018, amendment 2026-11-11).
+    #[must_use]
+    pub const fn over_locations(name: &'a str, transports: &'a [(String, String)]) -> Self {
+        Self {
+            name,
+            sends: None,
+            receives: None,
+            transports,
         }
     }
 }
@@ -83,6 +109,8 @@ struct Drawing<'a> {
     side: Side,
     /// The endpoints it is reached over on this side; `None`, every one.
     over: Option<&'a [String]>,
+    /// The transport each Location is reached over ([`Party::transports`]).
+    transports: &'a [(String, String)],
 }
 
 /// The Party's endpoints beneath one stage, the worst leaf beneath them, the
@@ -117,6 +145,7 @@ pub fn draw(
                 party: party.name,
                 side,
                 over,
+                transports: party.transports,
             };
             drawing.side(topology, names);
         }
@@ -237,7 +266,7 @@ impl Drawing<'_> {
             } else {
                 Origin::Both
             },
-            protocol: over(&facing),
+            protocol: self.over_what(&facing),
             state: health,
             volume,
             rate: 0.0,
@@ -247,8 +276,9 @@ impl Drawing<'_> {
             evidence: facing.worst.as_ref().map_or_else(
                 || format!("{ends}; no transport reported yet"),
                 |(endpoint, _)| {
-                    let over = over(&facing);
-                    format!("{ends} over {over}; worst over {endpoint}: {said}")
+                    let over = self.over_what(&facing);
+                    let at = self.at_what(&facing);
+                    format!("{ends} over {over}{at}; worst over {endpoint}: {said}")
                 },
             ),
         };
@@ -302,12 +332,42 @@ impl Drawing<'_> {
     }
 }
 
-/// What a link runs over: the one endpoint, or how many.
-fn over(facing: &Facing) -> String {
-    match facing.endpoints.as_slice() {
-        [] => "no transport reported".to_string(),
-        [one] => one.clone(),
-        many => format!("{} transports", many.len()),
+/// What a link runs over, said by `drawing`: never a Location's name.
+/// Where the endpoints are transports — the publisher said which the Party
+/// is reached over, a simulated node's — the one, or how many. Where they
+/// are a running node's Locations, the transport each one's address chose
+/// (`Party::transports`): the one, or how many, the Locations themselves
+/// named in the link's evidence (ADR-0018, amendment 2026-11-11).
+impl Drawing<'_> {
+    fn over_what(&self, facing: &Facing) -> String {
+        let words: BTreeSet<&str> = if self.over.is_some() {
+            facing.endpoints.iter().map(String::as_str).collect()
+        } else {
+            facing
+                .endpoints
+                .iter()
+                .flat_map(|location| {
+                    self.transports
+                        .iter()
+                        .filter(move |(named, _)| named == location)
+                        .map(|(_, transport)| transport.as_str())
+                })
+                .collect()
+        };
+        match words.len() {
+            0 => "no transport reported".to_string(),
+            1 => words.into_iter().collect(),
+            many => format!("{many} transports"),
+        }
+    }
+
+    /// The Locations a link runs over, where the endpoints are a running
+    /// node's Locations: what its evidence names, never its protocol.
+    fn at_what(&self, facing: &Facing) -> String {
+        if self.over.is_some() || facing.endpoints.is_empty() {
+            return String::new();
+        }
+        format!(", at {}", facing.endpoints.join(", "))
     }
 }
 
@@ -374,11 +434,13 @@ mod tests {
                 name: "one",
                 sends: Some(&a),
                 receives: Some(&b),
+                transports: &[],
             },
             Party {
                 name: "two",
                 sends: Some(&b),
                 receives: Some(&a),
+                transports: &[],
             },
         ];
         draw(
@@ -441,14 +503,69 @@ mod tests {
             nodes: members(&snapshot, &root(), &[node().as_str()]),
             links: Vec::new(),
         };
+        let transports = [
+            ("a".to_string(), "file".to_string()),
+            ("b".to_string(), "sftp".to_string()),
+        ];
+        let drawn = |transports| {
+            let mut drawing = topology.clone();
+            draw(
+                &snapshot,
+                &root(),
+                &[node().as_str()],
+                &[Party::over_locations("any", transports)],
+                &mut drawing,
+            );
+            drawing.links[0].clone()
+        };
+        // A running node's endpoints are its Locations: its link says the
+        // transports their addresses chose and names the Locations only in
+        // its evidence (ADR-0018, amendment 2026-11-11).
+        let link = drawn(&transports);
+        assert_eq!((link.protocol.as_str(), link.volume), ("2 transports", 9));
+        assert!(link.evidence.contains("at a, b"), "{}", link.evidence);
+        let one = [("a".to_string(), "file".to_string())];
         draw(
             &snapshot,
             &root(),
             &[node().as_str()],
-            &[Party::everywhere("any")],
+            &[Party::over_locations("any", &one)],
+            &mut topology,
+        );
+        assert_eq!(
+            topology.links[0].protocol, "file",
+            "one Location facing a Party says its transport, never its name"
+        );
+    }
+
+    #[test]
+    fn one_location_facing_a_party_gives_its_transport_never_its_name() {
+        let mut snapshot = Snapshot::new();
+        health(
+            &mut snapshot,
+            "receive/Sales orders from Party-A",
+            Health::Fine,
+        );
+        let mut topology = Topology {
+            source: String::new(),
+            observed_unix_nanos: 9,
+            nodes: members(&snapshot, &root(), &[node().as_str()]),
+            links: Vec::new(),
+        };
+        let transports = [("Sales orders from Party-A".to_string(), "file".to_string())];
+        draw(
+            &snapshot,
+            &root(),
+            &[node().as_str()],
+            &[Party::over_locations("any", &transports)],
             &mut topology,
         );
         let link = &topology.links[0];
-        assert_eq!((link.protocol.as_str(), link.volume), ("2 transports", 9));
+        assert_eq!(link.protocol, "file");
+        assert!(
+            link.evidence.contains("at Sales orders from Party-A"),
+            "{}",
+            link.evidence
+        );
     }
 }
