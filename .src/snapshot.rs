@@ -198,6 +198,43 @@ impl Snapshot {
         self.failed_messages.values()
     }
 
+    /// Copy every table of `from` into this snapshot — its health, counts,
+    /// Event subscriptions, Subscriptions, unheard members, Dead Message
+    /// Queues, failed Messages and what its paused scopes looked like — each
+    /// replacing what was here for the same key: what a reader that merges
+    /// several publishers' snapshots into one view calls, and nothing writes
+    /// again. Until 2026-11-11 the Essentials' roll copied four of these and
+    /// dropped the rest, so the Dead Message Queue and the failed Messages
+    /// never reached the board (ADR-0052, amendment 2026-11-11).
+    pub fn merge(&mut self, from: &Self) {
+        for record in from.health.values() {
+            self.record_health(record.clone());
+        }
+        for count in from.counts.values() {
+            self.record_count(count.clone());
+        }
+        for (scope, before) in &from.paused {
+            self.paused
+                .entry(scope.clone())
+                .or_insert_with(|| before.clone());
+        }
+        for subscription in from.event_subscriptions.values() {
+            self.record_event_subscription(subscription.clone());
+        }
+        for subscription in from.subscriptions.values() {
+            self.record_subscription(subscription.clone());
+        }
+        for unheard in from.unheard.values() {
+            self.record_unheard(unheard.clone());
+        }
+        for dead in from.dead_messages.values() {
+            self.record_dead_message(dead.clone());
+        }
+        for failed in from.failed_messages.values() {
+            self.record_failed_messages(failed.clone());
+        }
+    }
+
     /// Pause everything at and beneath a scope. Each affected record is held at
     /// [`PAUSED_SEVERITY`], its prior state kept for resume, and its counts stop.
     /// `who` names the operator, for the evidence line. Returns
@@ -490,6 +527,53 @@ mod tests {
         snapshot.record_health(health(&a, Health::Fine, 0));
 
         assert_eq!(snapshot.worst(&a), Some(Health::Paused));
+    }
+
+    #[test]
+    fn a_merge_carries_every_table_and_a_pause_with_what_it_held() {
+        let (a, node) = (at("receive/a"), node());
+        let mut from = Snapshot::new();
+        from.record_health(health(&a, Health::Done, 70));
+        from.record_count(count(&at("receive/b"), 3));
+        from.pause(&a, "ilian", 2_000);
+        from.record_dead_message(DeadMessage {
+            node: node.clone(),
+            message: "m-1".into(),
+            sequence: 1,
+            ..DeadMessage::default()
+        });
+        from.record_failed_messages(FailedMessages {
+            node: node.clone(),
+            send_port: "Invoices".into(),
+            count: 2,
+            ..FailedMessages::default()
+        });
+        from.record_unheard(Unheard {
+            by: node.clone(),
+            node: "elsewhere".into(),
+            ..Unheard::default()
+        });
+        from.record_subscription(Subscription {
+            node: node.clone(),
+            name: "Invoices".into(),
+            ..Subscription::default()
+        });
+
+        let mut into = Snapshot::new();
+        into.merge(&from);
+
+        assert_eq!(into.dead_messages().count(), 1, "the Dead Message Queue");
+        assert_eq!(into.failed_messages().count(), 1, "the failed Messages");
+        assert_eq!(into.unheard().count(), 1, "what a node does not hear");
+        assert_eq!(into.subscriptions().count(), 1);
+        assert_eq!(
+            into.measure(&at("receive/b"), Counted::Streams)
+                .map(|count| count.value),
+            Some(3)
+        );
+        assert_eq!(into.worst(&a), Some(Health::Paused));
+        assert_eq!(into.resume(&a), 1, "the pause came with what it held");
+        assert_eq!(into.worst(&a), Some(Health::Done));
     }
 
     #[test]

@@ -36,7 +36,13 @@ drawing's own order and reads a round in one pass; the module's timing
 program (`tests/measured`, run alone at landing) holds a drawing of 1,201
 things, 3,000 counts and 1,000 links under a millisecond. `Publication::write` writes
 it whole or not at all, by `publication::write_atomic`, the one writer of
-every file a surface reads a publisher's state from. The topology is drawn
+every file a surface reads a publisher's state from. A reader showing many
+publishers as one merges them here once: `Snapshot::merge`, every table,
+and `Topology::merge`, a node's own drawing winning for itself and what is
+beneath it but for a mood the reader holds worse, and its links where
+either end is its own (ADR-0052, amendments 2026-11-11). Where the work at
+a scope came from and went is said here once too, `topology::from_to`, for
+every surface (`xmip_publication_from_to_v1`). The topology is drawn
 here too, once for every publisher (ADR-0052, amendment 2026-09-30):
 `topology::draw` draws a cluster, its nodes, their declared or reported
 stages and an endpoint per segment beneath a stage, each Fine or Holding

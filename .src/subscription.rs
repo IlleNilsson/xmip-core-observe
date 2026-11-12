@@ -30,6 +30,11 @@ pub struct Subscription {
     /// Where it leads, in words: the Send Port, Send Port Group or Work
     /// Process a Message it picks up goes to.
     pub destination: String,
+    /// The Send Ports its destination reaches, by name: the one it names,
+    /// each of a Send Port Group's, none for a Work Process — where its
+    /// work goes, what a surface says as its to (ADR-0013, amendment
+    /// 2026-11-11).
+    pub send_ports: Vec<String>,
     /// The file it is configured in.
     pub file: String,
     /// Its entry in that file, as the file says it.
@@ -60,6 +65,8 @@ pub(crate) struct SubscriptionDocument {
     filter: String,
     #[serde(default)]
     destination: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    send_ports: Vec<String>,
     #[serde(default)]
     file: String,
     #[serde(default)]
@@ -84,6 +91,7 @@ impl SubscriptionDocument {
             application: subscription.application.clone(),
             filter: subscription.filter.clone(),
             destination: subscription.destination.clone(),
+            send_ports: subscription.send_ports.clone(),
             file: subscription.file.clone(),
             configuration: subscription.configuration.clone(),
             state: subscription.state.word().to_string(),
@@ -101,6 +109,7 @@ impl SubscriptionDocument {
             application: self.application,
             filter: self.filter,
             destination: self.destination,
+            send_ports: self.send_ports,
             file: self.file,
             configuration: self.configuration,
             state: PauseState::read(&self.state),
@@ -125,6 +134,7 @@ mod tests {
             state: PauseState::Paused,
             by: "ilian".to_string(),
             held: 3,
+            send_ports: vec!["Invoices to Party-A".to_string()],
             ..Subscription::default()
         };
         let read = SubscriptionDocument::of(&written).into_subscription();

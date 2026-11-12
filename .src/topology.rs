@@ -23,8 +23,13 @@
 //! thing's activity, per second.
 
 pub mod draw;
+pub mod from_to;
 pub mod party;
 pub mod window;
+
+/// What a link between two nodes runs over: the one way a node hands work
+/// on to another, through a Storage node (`terminology.md`, Xmip Storage).
+pub const XMIP_STORAGE: &str = "Xmip Storage";
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -192,6 +197,50 @@ pub struct Topology {
     pub links: Vec<TopologyLink>,
 }
 
+impl Topology {
+    /// What the node `name` drew of itself, `node`, merged into this
+    /// drawing — a roll's of the cluster (ADR-0052, amendment 2026-11-11).
+    /// The node owns itself and what is beneath it, `node/<name>` and
+    /// `node/<name>/…`, and nothing else: for an owned thing both drawings
+    /// hold, the node's drawing wins — its activity, its load, what it alone
+    /// knows — but for its mood, where this drawing's is worse, which comes
+    /// with its evidence: a verdict only the reader published, a Receive
+    /// Location's delivery, shows on the Location the node drew Fine. What
+    /// this drawing holds of anything the node does not own stays; what it
+    /// does not hold is added. A link is the node's where either end is, so
+    /// its Party links, a Receive Location to its Subscription and the
+    /// traffic its Storage node measured from and to the other nodes join
+    /// the cluster's drawing as the node drew them.
+    pub fn merge(&mut self, name: &str, node: &Self) {
+        let own = draw::node_id(name);
+        let owned = |id: &str| {
+            id.strip_prefix(&own)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        };
+        for drawn in &node.nodes {
+            match self.nodes.iter_mut().find(|one| one.id == drawn.id) {
+                Some(one) if owned(&drawn.id) => {
+                    let mut merged = drawn.clone();
+                    if one.state > drawn.state {
+                        merged.state = one.state;
+                        merged.evidence = std::mem::take(&mut one.evidence);
+                    }
+                    *one = merged;
+                }
+                Some(_) => {}
+                None => self.nodes.push(drawn.clone()),
+            }
+        }
+        for drawn in &node.links {
+            match self.links.iter_mut().find(|one| one.id == drawn.id) {
+                Some(one) if owned(&drawn.from) || owned(&drawn.to) => *one = drawn.clone(),
+                Some(_) => {}
+                None => self.links.push(drawn.clone()),
+            }
+        }
+    }
+}
+
 /// One thing that communicates. `parent` is empty at the top; load runs
 /// from zero to one. `activity` is what moved through it, per second, over
 /// its publisher's [`window::Window`]: zero when nothing moved, as drawn
@@ -285,6 +334,113 @@ mod tests {
         assert_eq!(NodeKind::default(), NodeKind::Computer);
         assert_eq!(Origin::default(), Origin::Both);
         assert_eq!(Pattern::default(), Pattern::SendReceive);
+    }
+
+    fn drawn(id: &str, label: &str) -> TopologyNode {
+        TopologyNode {
+            id: id.to_string(),
+            parent: String::new(),
+            label: label.to_string(),
+            kind: NodeKind::Node,
+            scope: String::new(),
+            state: Health::Fine,
+            origin: Origin::Both,
+            load: 0.0,
+            activity: 0.0,
+            evidence: String::new(),
+        }
+    }
+
+    fn linked(from: &str, to: &str, volume: u64) -> TopologyLink {
+        TopologyLink {
+            id: format!("{from}→{to}"),
+            from: from.to_string(),
+            to: to.to_string(),
+            pattern: Pattern::PublishConsume,
+            origin: Origin::Observed,
+            protocol: XMIP_STORAGE.to_string(),
+            state: Health::Fine,
+            volume,
+            rate: 0.0,
+            latency_ms: 0.0,
+            progress: 0.0,
+            attempts: 0,
+            evidence: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_nodes_own_drawing_wins_for_what_it_owns_but_a_worse_mood_and_its_links_join() {
+        let test = test_cluster();
+        let (receiver, storer) = (&test.node(0).name, &test.node(1).name);
+        let (receiving, storing) = (format!("node/{receiver}"), format!("node/{storer}"));
+        let stage = format!("{receiving}/receive");
+        let location = format!("{stage}/Sales orders from Party-A");
+        let struck = TopologyNode {
+            state: Health::Holding,
+            evidence: "a document no Subscription takes".to_string(),
+            ..drawn(&location, "the roll's")
+        };
+        let mut cluster = Topology {
+            nodes: vec![
+                drawn("cluster", "the roll's"),
+                drawn(&receiving, "the roll's"),
+                drawn(&storing, "the roll's"),
+                struck,
+            ],
+            links: vec![linked("party/sending/any-party", &stage, 3)],
+            ..Topology::default()
+        };
+        let storage = Topology {
+            nodes: vec![
+                drawn("cluster", "the node's"),
+                drawn(&storing, "its own"),
+                drawn(&receiving, "drawn by another"),
+            ],
+            links: vec![linked(&receiving, &storing, 7)],
+            ..Topology::default()
+        };
+        let own_drawing = Topology {
+            nodes: vec![
+                drawn(&receiving, "its own"),
+                drawn(&stage, "Receive"),
+                drawn(&location, "its own"),
+            ],
+            links: vec![linked("party/sending/any-party", &stage, 9)],
+            ..Topology::default()
+        };
+
+        cluster.merge(storer, &storage);
+        cluster.merge(receiver, &own_drawing);
+
+        let found = |id: &str| {
+            cluster
+                .nodes
+                .iter()
+                .find(|one| one.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+        };
+        assert_eq!(found("cluster").label, "the roll's", "no node owns it");
+        assert_eq!(found(&storing).label, "its own");
+        assert_eq!(
+            found(&receiving).label,
+            "its own",
+            "only the node itself, never a node another drew"
+        );
+        assert_eq!(found(&stage).label, "Receive", "beneath it, added");
+        let location = found(&location);
+        assert_eq!(location.label, "its own");
+        assert_eq!(
+            (location.state, location.evidence.as_str()),
+            (Health::Holding, "a document no Subscription takes"),
+            "the reader's worse mood stays, with what it said"
+        );
+        let volumes: Vec<u64> = cluster.links.iter().map(|link| link.volume).collect();
+        assert_eq!(
+            volumes,
+            [9, 7],
+            "the node's own Party link wins; the Storage node's traffic joins"
+        );
     }
 
     #[test]
