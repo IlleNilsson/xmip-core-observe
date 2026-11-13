@@ -590,6 +590,8 @@ mod tests {
                 load: 0.0,
                 activity: 0.5,
                 evidence: String::new(),
+                roles: String::new(),
+                place: None,
             }],
             links: Vec::new(),
         };

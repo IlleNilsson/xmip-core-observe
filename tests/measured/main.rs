@@ -10,6 +10,11 @@
 //!   links within a millisecond (`topology::window`; ADR-0052, amendment
 //!   2026-11-10): one pass a round, never the square of the cluster, which
 //!   took 101 ms for as many as first built.
+//! - A reader lays out every focus of a 176-node publication within a
+//!   millisecond, and of a cluster related by role drawing as many
+//!   (`topology::layout`, [`layout`]; ADR-0052, amendment 2026-11-13).
+
+mod layout;
 
 use std::time::{Duration, Instant};
 
@@ -39,6 +44,8 @@ fn thing(id: String, parent: &str, kind: NodeKind, scope: String) -> TopologyNod
         load: 0.0,
         activity: 0.0,
         evidence: String::new(),
+        roles: String::new(),
+        place: None,
     }
 }
 
@@ -49,6 +56,7 @@ fn link(id: String, from: String, to: String) -> TopologyLink {
         to,
         pattern: Pattern::SendReceive,
         origin: Origin::Both,
+        relation: xmip_core_observe::Relation::Traffic,
         protocol: String::new(),
         state: Health::Fine,
         volume: 0,

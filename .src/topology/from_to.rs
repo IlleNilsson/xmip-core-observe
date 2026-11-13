@@ -11,8 +11,9 @@
 //! written into, each Send Port those Subscriptions reach and its node, and
 //! the Party it delivers to over its transport. What the drawing has not
 //! seen yet — no Party link, no Location feeding a Subscription, no Storage
-//! traffic — is left out, never guessed. A Party is `any-party` until the
-//! configuration names which a Location takes (open problem 33).
+//! traffic — is left out, never guessed. A Party facing one node is said as
+//! it is drawn, `TX-Party 1` or `RX-Party 2`, until the configuration names
+//! which a Location takes (open problem 33).
 //!
 //! A Receive Location's, a Subscription's and a Send Port's scope, and what
 //! is beneath one, give that path; a node's gives the Parties and nodes
@@ -45,7 +46,7 @@ pub struct Hop {
 
 impl Hop {
     /// The hop as a person reads it in a from or a to: `Sales orders to ERP
-    /// [TX2]`, `any-party over file`.
+    /// [TX2]`, `TX-Party 1 over file`.
     #[must_use]
     pub fn words(&self) -> String {
         match (self.node.is_empty(), self.transport.is_empty()) {
@@ -222,7 +223,7 @@ impl Path<'_> {
             .links
             .iter()
             .filter(|link| mine(&link.to) && !mine(&link.from))
-            .map(|link| Self::end(&link.from, link))
+            .map(|link| self.end(&link.from, link))
             .collect();
         hops.push(hop("Node", node, node));
         hops.extend(
@@ -230,13 +231,14 @@ impl Path<'_> {
                 .links
                 .iter()
                 .filter(|link| mine(&link.from) && !mine(&link.to))
-                .map(|link| Self::end(&link.to, link)),
+                .map(|link| self.end(&link.to, link)),
         );
         dedup(hops)
     }
 
-    /// The far end `id` of `link` as a hop: a Party or a node.
-    fn end(id: &str, link: &TopologyLink) -> Hop {
+    /// The far end `id` of `link` as a hop: a Party, by what it is drawn
+    /// as — `TX-Party 2` facing one node — or a node.
+    fn end(&self, id: &str, link: &TopologyLink) -> Hop {
         let mut segments = id.split('/');
         match (segments.next(), segments.next(), segments.next()) {
             (Some("party"), Some(side), Some(party)) => Hop {
@@ -245,7 +247,12 @@ impl Path<'_> {
                 } else {
                     "Sending Party"
                 },
-                name: party.to_string(),
+                name: self
+                    .topology
+                    .nodes
+                    .iter()
+                    .find(|drawn| drawn.id == id)
+                    .map_or_else(|| party.to_string(), |drawn| drawn.label.clone()),
                 node: String::new(),
                 transport: link.protocol.clone(),
             },
@@ -266,7 +273,7 @@ impl Path<'_> {
         let stage = format!("node/{node}/receive");
         self.links_into(&stage)
             .filter(|link| link.from.starts_with("party/"))
-            .map(|link| Self::end(&link.from, link))
+            .map(|link| self.end(&link.from, link))
             .collect()
     }
 
@@ -275,7 +282,7 @@ impl Path<'_> {
         let stage = format!("node/{node}/send");
         self.links_out_of(&stage)
             .filter(|link| link.to.starts_with("party/"))
-            .map(|link| Self::end(&link.to, link))
+            .map(|link| self.end(&link.to, link))
             .collect()
     }
 

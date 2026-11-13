@@ -28,6 +28,7 @@ use node::{Capability, Stage};
 use crate::health::Health;
 use crate::scope::{NODE, Scope};
 use crate::snapshot::{HealthRecord, Snapshot};
+use crate::topology::relate::Member;
 use crate::topology::{NodeKind, Origin, TopologyNode};
 
 /// The id of the cluster, the one drawn thing with no parent.
@@ -112,17 +113,37 @@ pub fn fraction(part: usize, whole: usize) -> f64 {
     }
 }
 
-/// The cluster at `root` and every node named, each followed by its stages
-/// and their endpoints, in the order named.
+/// The cluster at `root` and every member, each saying the roles it
+/// declares and its place in `[storage] nodes` as its caller knows them —
+/// the roll from the cluster's file, a running node from itself — and
+/// followed by its stages and their endpoints, in the order given.
 #[must_use]
-pub fn members(snapshot: &Snapshot, root: &str, names: &[&str]) -> Vec<TopologyNode> {
+pub fn members(snapshot: &Snapshot, root: &str, members: &[Member]) -> Vec<TopologyNode> {
     let mut drawn = vec![cluster(snapshot, root)];
-    for name in names {
-        let scope = format!("{root}/node/{name}");
-        drawn.push(node(snapshot, name, &scope));
-        drawn.extend(stages(snapshot, name, &scope));
+    for member in members {
+        let scope = format!("{root}/node/{}", member.node);
+        drawn.push(TopologyNode {
+            roles: member.words(),
+            place: member.storage_place,
+            ..node(snapshot, &member.node, &scope)
+        });
+        drawn.extend(stages(snapshot, &member.node, &scope));
     }
     drawn
+}
+
+/// What is placed beneath the stage `stage` of the node at `node_scope`, by
+/// name, once each: each Location or Port it reported on beneath receive and
+/// send, and beneath process each Subscription the node published it routes
+/// by — what its stage is drawn holding, and what a relation says is placed
+/// on it ([`super::relate`]).
+#[must_use]
+pub fn placed(snapshot: &Snapshot, node_scope: &str, stage: Stage) -> BTreeSet<String> {
+    if stage == Stage::Process {
+        routed_by(snapshot, node_scope)
+    } else {
+        endpoints(snapshot, &format!("{node_scope}/{}", stage.name()))
+    }
 }
 
 /// Where the cluster at `root` is read, its mood and what moved through it
@@ -148,6 +169,8 @@ pub fn cluster(snapshot: &Snapshot, root: &str) -> TopologyNode {
         load: 0.0,
         activity: 0.0,
         evidence,
+        roles: String::new(),
+        place: None,
     }
 }
 
@@ -166,6 +189,8 @@ pub fn node(snapshot: &Snapshot, name: &str, scope: &str) -> TopologyNode {
         load: 0.0,
         activity: 0.0,
         evidence,
+        roles: String::new(),
+        place: None,
     }
 }
 
@@ -197,12 +222,7 @@ pub fn stages(snapshot: &Snapshot, name: &str, scope: &str) -> Vec<TopologyNode>
         // beneath the process stage each Subscription the node published
         // it routes by, which a Receive Location feeds, and nothing else
         // its scopes hold (ADR-0018, amendment 2026-11-11).
-        let beneath = if stage == Stage::Process {
-            routed_by(snapshot, scope)
-        } else {
-            endpoints(snapshot, &at)
-        };
-        for endpoint in beneath {
+        for endpoint in placed(snapshot, scope, stage) {
             drawn.push(part(
                 snapshot,
                 &format!("{id}/{endpoint}"),
@@ -281,6 +301,8 @@ fn part(
         load: 0.0,
         activity: 0.0,
         evidence,
+        roles: String::new(),
+        place: None,
     }
 }
 
@@ -319,7 +341,7 @@ mod tests {
             snapshot.record_health(record(&format!("{scope}/{leaf}"), health, evidence));
         }
 
-        let drawn = members(&snapshot, &root, &[name]);
+        let drawn = members(&snapshot, &root, &[Member::new(name, &[], None)]);
         let shape: Vec<(&str, &str, &str)> = drawn
             .iter()
             .map(|node| (node.id.as_str(), node.kind.word(), node.parent.as_str()))
@@ -367,7 +389,7 @@ mod tests {
             name: "Invoices".into(),
             ..crate::Subscription::default()
         });
-        let drawn = members(&snapshot, &root, &[name]);
+        let drawn = members(&snapshot, &root, &[Member::new(name, &[], None)]);
         let beneath: Vec<&str> = drawn
             .iter()
             .filter(|one| one.parent == process)
