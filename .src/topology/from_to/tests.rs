@@ -4,7 +4,7 @@ use super::*;
 use crate::health::Health;
 use crate::snapshot::HealthRecord;
 use crate::subscription::Subscription;
-use crate::topology::{Origin, Pattern};
+use crate::topology::{Origin, Pattern, TopologyNode};
 
 const LOCATION: &str = "Sales orders from Party-A";
 const SUBSCRIPTION: &str = "Sales orders";
@@ -12,11 +12,12 @@ const PORT: &str = "Sales orders to ERP";
 
 fn linked(from: &str, to: &str, protocol: &str) -> TopologyLink {
     TopologyLink {
-        id: format!("{from}→{to}"),
+        id: super::super::link_id(from, to, crate::topology::Relation::Traffic),
         from: from.to_string(),
         to: to.to_string(),
         pattern: Pattern::PublishConsume,
         origin: Origin::Observed,
+        relation: crate::topology::Relation::Traffic,
         protocol: protocol.to_string(),
         state: Health::Fine,
         volume: 1,
@@ -53,13 +54,30 @@ fn path() -> (Snapshot, Topology, [String; 3]) {
         ..Subscription::default()
     });
     let at = |name: &str, beneath: &str| format!("node/{name}{beneath}");
+    // Each Party facing one node, as a running node draws it, said by what
+    // it is drawn as.
+    let (into, out) = (
+        format!("party/sending/{}", at(&receiving, "")),
+        format!("party/receiving/{}", at(&sending, "")),
+    );
+    let party = |id: &str, label: &str| TopologyNode {
+        id: id.to_string(),
+        parent: "cluster".to_string(),
+        label: label.to_string(),
+        kind: crate::topology::NodeKind::Party,
+        scope: String::new(),
+        state: Health::Fine,
+        origin: Origin::Both,
+        load: 0.0,
+        activity: 0.0,
+        evidence: String::new(),
+        roles: String::new(),
+        place: None,
+    };
     let topology = Topology {
+        nodes: vec![party(&into, "TX-Party 1"), party(&out, "RX-Party 1")],
         links: vec![
-            linked(
-                "party/sending/any-party",
-                &at(&receiving, "/receive"),
-                "file",
-            ),
+            linked(&into, &at(&receiving, "/receive"), "file"),
             linked(
                 &at(&receiving, &format!("/receive/{LOCATION}")),
                 &at(&receiving, &format!("/process/{SUBSCRIPTION}")),
@@ -67,7 +85,7 @@ fn path() -> (Snapshot, Topology, [String; 3]) {
             ),
             linked(&at(&receiving, ""), &at(&storing, ""), XMIP_STORAGE),
             linked(&at(&storing, ""), &at(&sending, ""), XMIP_STORAGE),
-            linked(&at(&sending, "/send"), "party/receiving/any-party", "file"),
+            linked(&at(&sending, "/send"), &out, "file"),
         ],
         ..Topology::default()
     };
@@ -95,24 +113,24 @@ fn a_receive_location_goes_from_its_party_through_storage_to_the_send_port_and_i
     assert_eq!(
         kinds(&found),
         [
-            ("Sending Party", "any-party", ""),
+            ("Sending Party", "TX-Party 1", ""),
             ("Receive Location", LOCATION, receiving.as_str()),
             ("Subscription", SUBSCRIPTION, receiving.as_str()),
             ("Storage node", storing.as_str(), storing.as_str()),
             ("Send Port", PORT, sending.as_str()),
-            ("Receiving Party", "any-party", ""),
+            ("Receiving Party", "RX-Party 1", ""),
         ]
     );
-    assert_eq!(found.from, "any-party over file");
-    assert_eq!(found.to, "any-party over file");
+    assert_eq!(found.from, "TX-Party 1 over file");
+    assert_eq!(found.to, "RX-Party 1 over file");
     assert_eq!(found.hops[4].words(), format!("{PORT} [{sending}]"));
     assert_eq!(
         found.line,
-        "from any-party over file → to any-party over file"
+        "from TX-Party 1 over file → to RX-Party 1 over file"
     );
     assert!(
         found.path.starts_with(&format!(
-            "any-party over file → {LOCATION} [{receiving}] → "
+            "TX-Party 1 over file → {LOCATION} [{receiving}] → "
         )),
         "{}",
         found.path
@@ -129,12 +147,12 @@ fn a_send_port_comes_from_the_subscription_that_reaches_it_on_another_node() {
     assert_eq!(
         kinds(&found),
         [
-            ("Sending Party", "any-party", ""),
+            ("Sending Party", "TX-Party 1", ""),
             ("Receive Location", LOCATION, receiving.as_str()),
             ("Subscription", SUBSCRIPTION, receiving.as_str()),
             ("Storage node", storing.as_str(), storing.as_str()),
             ("Send Port", PORT, sending.as_str()),
-            ("Receiving Party", "any-party", ""),
+            ("Receiving Party", "RX-Party 1", ""),
         ]
     );
 }
@@ -149,12 +167,12 @@ fn a_node_goes_from_what_hands_it_work_to_what_it_hands_work_to() {
     assert_eq!(
         kinds(&found),
         [
-            ("Sending Party", "any-party", ""),
+            ("Sending Party", "TX-Party 1", ""),
             ("Node", receiving.as_str(), receiving.as_str()),
             ("Node", storing.as_str(), storing.as_str()),
         ]
     );
-    assert_eq!(found.from, "any-party over file");
+    assert_eq!(found.from, "TX-Party 1 over file");
     assert_eq!(found.to, format!("{storing} [{storing}]"));
 }
 

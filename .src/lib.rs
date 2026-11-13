@@ -51,7 +51,7 @@ pub use run::{Run, RunList};
 pub use scope::Scope;
 pub use snapshot::{Count, HealthRecord, Snapshot};
 pub use subscription::Subscription;
-pub use topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
+pub use topology::{NodeKind, Origin, Pattern, Relation, Topology, TopologyLink, TopologyNode};
 pub use unheard::Unheard;
 
 use xcore::{Clock, SystemClock};

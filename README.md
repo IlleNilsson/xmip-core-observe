@@ -44,13 +44,35 @@ either end is its own (ADR-0052, amendments 2026-11-11). Where the work at
 a scope came from and went is said here once too, `topology::from_to`, for
 every surface (`xmip_publication_from_to_v1`). The topology is drawn
 here too, once for every publisher (ADR-0052, amendment 2026-09-30):
-`topology::draw` draws a cluster, its nodes, their declared or reported
-stages and an endpoint per segment beneath a stage, each Fine or Holding
-over its worst leaf and still until a window states what moved;
-`topology::party` adds the Party on each side a stage faces, linked with
-what the stage counted. The Essentials' roll and a running node (the
+`topology::draw` draws a cluster, its nodes — each saying the roles it
+declares and, a Storage node, its place in `[storage] nodes` — their
+declared or reported stages and an endpoint per segment beneath a stage,
+each Fine or Holding over its worst leaf and still until a window states
+what moved; `topology::party` adds the Parties on each side a stage
+faces — where a publication cannot say which Parties a Location takes, one
+facing each node on each side, labelled *TX-Party 1, 2, …* sending in and
+*RX-Party 1, …* delivered to, numbered per side in the order the nodes
+stand — linked with what the stage counted. The Essentials' roll and a running node (the
 runtime's `Running::publication`, which `xmip-service` writes) both draw
-through them, and each states its drawing over a window of its own. A node's throughput over time is `Curve`, the history file, and the
+through them, and each states its drawing over a window of its own.
+
+How the cluster's nodes are related is `topology::relate`, by role and the
+order of `[storage] nodes` and never by a name: every node not declaring
+storage *writes into* the first listed, which *hands work to* every node
+serving process or send and *copies to* each later-listed one; a node
+declaring operational or monitoring *operates* or *monitors* every other —
+each configured until traffic crosses it (`topology::Relation`; ADR-0052
+and ADR-0056, amendments 2026-11-13). Every link is named by one rule,
+`topology::link_id(from, to, relation)`, so a configured relation and the
+traffic observed over it merge into one line, configured and observed
+(`Origin::joined`). Where each thing stands on the map is
+`topology::layout`, computed by the reader (`xmip_publication_layout_v1`):
+TX-Parties, receiving, Storage, sending, RX-Parties left to right, the
+operation band on top, processing over Storage, standbys below the first
+listed, executing in a lane of its own; never by traffic, never by a name.
+Its tests hold a renamed cluster to the same bands and columns, swapped
+roles to swapped places, and every line clear of the things it does not
+join. A node's throughput over time is `Curve`, the history file, and the
 recent items beneath a scope are `Recent`, the activity file; each is
 written and read here, as a publication is. What a reader does not know it
 decides here once — an unknown mood

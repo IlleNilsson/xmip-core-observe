@@ -1,40 +1,43 @@
 //! The Parties outside a cluster's nodes and the links to them (ADR-0019;
 //! ADR-0052, amendment 2026-09-29). The owner, 2026-09-29: *Something is
 //! sending streams to a Xmip Node. A Xmip Node sends streams to somethings.*
-//! Each Party is drawn for every side it is on: the one that sends into a
-//! receive stage, linked to each receive stage it sends into, and the one a
-//! send stage delivers to, linked from each send stage that delivers to it —
-//! never one box per far end. A link carries what its stage counted over the
-//! Party's transports (`Counted::at`) and the worst leaf of the Party's
-//! endpoints beneath the stage, and says which endpoint that was.
+//! A link carries what its stage counted over the Party's transports
+//! (`Counted::at`) and the worst leaf of the Party's endpoints beneath the
+//! stage, and says which endpoint that was.
 //!
-//! Which Parties there are, and over which transports each is reached on
-//! each side, is the publisher's to say ([`Party`]): the Essentials' are its
-//! configuration's `[[parties]]`, each on its share of the transports
-//! (ADR-0028, amendment 2026-10-13); a running node's is `any-party`, over
-//! every endpoint, while its publication does not say which Parties a
+//! Which Parties there are is the publisher's to say. Where its
+//! configuration names them ([`Party`], [`draw`]) — the Essentials'
+//! `[[parties]]`, each on its share of the transports (ADR-0028, amendment
+//! 2026-10-13) — each is drawn once for every side it is on, linked to each
+//! stage it faces. Where its publication cannot say which Parties a
 //! Location's `accept.party` takes (ADR-0018, amendment 2026-09-30; open
-//! problem 33). Drawn here once for both.
+//! problem 33) — a running node, a node a roll reads — one Party is drawn
+//! per node facing outside, on each side ([`facing`]): [`TX_PARTY`] 1, 2, …,
+//! each sending into one receiving or executing node, and [`RX_PARTY`] 1,
+//! 2, …, each delivered to by one sending or executing node, numbered per
+//! side in the order the nodes stand on the map (`layout::place_order`),
+//! never by a name (the owner, 2026-11-12; the labels his, 2026-11-13;
+//! ADR-0052, amendment 2026-11-13). Drawn here once for both.
 
-use std::collections::BTreeSet;
+mod over;
 
 use node::Stage;
 
 use super::draw::{CLUSTER, drawn, mood, node_id, worst};
+use super::{Relation, link_id};
 use crate::counted::Counted;
 use crate::snapshot::{HealthRecord, Snapshot};
 use crate::topology::{NodeKind, Origin, Pattern, Topology, TopologyLink, TopologyNode};
 
-/// The Party drawn on each side of a node whose publication cannot say which
-/// Parties its Locations take (open problem 33): a running node's, and a
-/// node a roll reads rather than simulates.
-pub const ANY_PARTY: &str = "any-party";
+/// What a Party sending into one node is labelled, numbered after it.
+pub const TX_PARTY: &str = "TX-Party";
+
+/// What a Party one node delivers to is labelled, numbered after it.
+pub const RX_PARTY: &str = "RX-Party";
 
 /// A Party to draw, and the endpoints — by the label each is drawn with —
 /// it is reached over on each side. `None` on a side is every endpoint a
-/// stage holds; an empty list is not on that side. Where the endpoints are
-/// a running node's Locations, `transports` says which transport each is
-/// reached over, by its name: a link says that, never a Location's name.
+/// stage holds; an empty list is not on that side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Party<'a> {
     pub name: &'a str,
@@ -42,35 +45,6 @@ pub struct Party<'a> {
     pub sends: Option<&'a [String]>,
     /// What the send stages deliver to it over.
     pub receives: Option<&'a [String]>,
-    /// Each Location by its name, and the transport its address chose:
-    /// empty where the endpoints are transports themselves.
-    pub transports: &'a [(String, String)],
-}
-
-impl<'a> Party<'a> {
-    /// `name`, on both sides over every endpoint.
-    #[must_use]
-    pub const fn everywhere(name: &'a str) -> Self {
-        Self {
-            name,
-            sends: None,
-            receives: None,
-            transports: &[],
-        }
-    }
-
-    /// `name`, on both sides over every Location, each reached over the
-    /// transport `transports` names it with: a running node's Party
-    /// (ADR-0018, amendment 2026-11-11).
-    #[must_use]
-    pub const fn over_locations(name: &'a str, transports: &'a [(String, String)]) -> Self {
-        Self {
-            name,
-            sends: None,
-            receives: None,
-            transports,
-        }
-    }
 }
 
 /// Which side of the cluster a Party is on.
@@ -98,18 +72,31 @@ impl Side {
             Side::Receiving => "receiving",
         }
     }
+
+    /// What a Party facing one node on this side is called.
+    const fn numbered(self) -> &'static str {
+        match self {
+            Side::Sending => TX_PARTY,
+            Side::Receiving => RX_PARTY,
+        }
+    }
 }
 
-/// What is drawn: the snapshot, the cluster's root scope, the Party and
-/// the side.
+/// What is drawn: the snapshot, the cluster's root scope, the Party — its
+/// id and what it is called — and the side.
 struct Drawing<'a> {
     snapshot: &'a Snapshot,
     root: &'a str,
-    party: &'a str,
+    id: String,
+    /// The scope its box is drawn at: a named Party's `<root>/party/<name>`,
+    /// one facing a node its id beneath the root.
+    scope: String,
+    party: String,
     side: Side,
     /// The endpoints it is reached over on this side; `None`, every one.
     over: Option<&'a [String]>,
-    /// The transport each Location is reached over ([`Party::transports`]).
+    /// Each Location by its name, and the transport its address chose:
+    /// empty where the endpoints are transports themselves.
     transports: &'a [(String, String)],
 }
 
@@ -142,18 +129,56 @@ pub fn draw(
             let drawing = Drawing {
                 snapshot,
                 root,
-                party: party.name,
+                id: format!("party/{}/{}", side.word(), party.name),
+                scope: format!("{root}/party/{}", party.name),
+                party: party.name.to_string(),
                 side,
                 over,
-                transports: party.transports,
+                transports: &[],
             };
             drawing.side(topology, names);
         }
     }
 }
 
+/// Add one Party per node of `names` facing outside, on each side its stage
+/// faces it, over every endpoint, each Location reached over the transport
+/// `transports` names it with: [`TX_PARTY`] and [`RX_PARTY`], numbered per
+/// side in the order `names` gives, the order the nodes stand on the map.
+/// Its id names the node it faces, so a node's own drawing and the
+/// cluster's meet whatever number each gave it.
+pub fn facing(
+    snapshot: &Snapshot,
+    root: &str,
+    names: &[&str],
+    transports: &[(String, String)],
+    topology: &mut Topology,
+) {
+    for side in [Side::Sending, Side::Receiving] {
+        let mut number = 1;
+        for name in names {
+            let id = format!("party/{}/{}", side.word(), node_id(name));
+            let drawing = Drawing {
+                snapshot,
+                root,
+                scope: format!("{root}/{id}"),
+                id,
+                party: format!("{} {number}", side.numbered()),
+                side,
+                over: None,
+                transports,
+            };
+            if drawing.side(topology, &[name]) {
+                number += 1;
+            }
+        }
+    }
+}
+
 impl Drawing<'_> {
-    fn side(&self, topology: &mut Topology, names: &[&str]) {
+    /// The Party on this side, linked to each of the nodes `names` whose
+    /// stage faces it: whether any did.
+    fn side(&self, topology: &mut Topology, names: &[&str]) -> bool {
         let mut facing = Vec::new();
         let mut links = Vec::new();
         for name in names {
@@ -163,15 +188,11 @@ impl Drawing<'_> {
             }
         }
         if links.is_empty() {
-            return;
+            return false;
         }
         topology.nodes.push(self.party(&facing));
         topology.links.extend(links);
-    }
-
-    /// The id of the Party's box on this side.
-    fn party_id(&self) -> String {
-        format!("party/{}/{}", self.side.word(), self.party)
+        true
     }
 
     /// Whether the Party is reached over the endpoint labeled `label`.
@@ -241,21 +262,21 @@ impl Drawing<'_> {
         let scope = format!("{}/node/{name}/{}", self.root, stage.name());
         let volume = self.volume(&scope, stage, &facing);
         let (health, said) = mood(facing.worst.as_ref().map(|(_, record)| record));
-        let party = self.party;
+        let party = &self.party;
         let (from, to, ends) = match self.side {
             Side::Sending => (
-                self.party_id(),
+                self.id.clone(),
                 stage_id,
                 format!("{party} sends into {name}"),
             ),
             Side::Receiving => (
                 stage_id,
-                self.party_id(),
+                self.id.clone(),
                 format!("{name} delivers to {party}"),
             ),
         };
         let link = TopologyLink {
-            id: format!("party/{}/{party}/{name}", self.side.word()),
+            id: link_id(&from, &to, Relation::Traffic),
             from,
             to,
             pattern: Pattern::SendReceive,
@@ -266,6 +287,7 @@ impl Drawing<'_> {
             } else {
                 Origin::Both
             },
+            relation: Relation::Traffic,
             protocol: self.over_what(&facing),
             state: health,
             volume,
@@ -297,7 +319,7 @@ impl Drawing<'_> {
                     .map(|(endpoint, record)| (*name, endpoint, record))
             })
             .min_by(|(_, _, a), (_, _, b)| a.standing().cmp(&b.standing()));
-        let scope = format!("{}/party/{}", self.root, self.party);
+        let scope = self.scope.clone();
         let (state, said) = drawn(worse.map(|(_, _, record)| record), &scope);
         let names: Vec<&str> = facing.iter().map(|(name, _)| *name).collect();
         let verb = match self.side {
@@ -314,9 +336,9 @@ impl Drawing<'_> {
             },
         );
         TopologyNode {
-            id: self.party_id(),
+            id: self.id.clone(),
             parent: CLUSTER.to_string(),
-            label: self.party.to_string(),
+            label: self.party.clone(),
             kind: NodeKind::Party,
             scope,
             state,
@@ -328,244 +350,11 @@ impl Drawing<'_> {
             load: 0.0,
             activity: 0.0,
             evidence,
+            roles: String::new(),
+            place: None,
         }
-    }
-}
-
-/// What a link runs over, said by `drawing`: never a Location's name.
-/// Where the endpoints are transports — the publisher said which the Party
-/// is reached over, a simulated node's — the one, or how many. Where they
-/// are a running node's Locations, the transport each one's address chose
-/// (`Party::transports`): the one, or how many, the Locations themselves
-/// named in the link's evidence (ADR-0018, amendment 2026-11-11).
-impl Drawing<'_> {
-    fn over_what(&self, facing: &Facing) -> String {
-        let words: BTreeSet<&str> = if self.over.is_some() {
-            facing.endpoints.iter().map(String::as_str).collect()
-        } else {
-            facing
-                .endpoints
-                .iter()
-                .flat_map(|location| {
-                    self.transports
-                        .iter()
-                        .filter(move |(named, _)| named == location)
-                        .map(|(_, transport)| transport.as_str())
-                })
-                .collect()
-        };
-        match words.len() {
-            0 => "no transport reported".to_string(),
-            1 => words.into_iter().collect(),
-            many => format!("{many} transports"),
-        }
-    }
-
-    /// The Locations a link runs over, where the endpoints are a running
-    /// node's Locations: what its evidence names, never its protocol.
-    fn at_what(&self, facing: &Facing) -> String {
-        if self.over.is_some() || facing.endpoints.is_empty() {
-            return String::new();
-        }
-        format!(", at {}", facing.endpoints.join(", "))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Party, draw};
-    use crate::health::Health;
-    use crate::snapshot::{Count, HealthRecord, Snapshot};
-    use crate::topology::{Topology, draw::members};
-    use crate::{Counted, NodeKind};
-
-    use configure::fixture::test_cluster;
-
-    fn root() -> String {
-        test_cluster().scope()
-    }
-
-    /// The test cluster's first node, the one drawn.
-    fn node() -> String {
-        test_cluster().node(0).name.clone()
-    }
-
-    fn health(snapshot: &mut Snapshot, leaf: &str, health: Health) {
-        snapshot.record_health(HealthRecord {
-            scope: format!("{}/node/{}/{leaf}", root(), node()),
-            health,
-            severity: if health == Health::Fine { 0 } else { 60 },
-            evidence: format!("{leaf} said so"),
-            observed_unix_nanos: 7,
-        });
-    }
-
-    fn count(snapshot: &mut Snapshot, at: &str, counted: Counted, value: u64) {
-        snapshot.record_count(Count {
-            scope: format!("{}/node/{}/{at}", root(), node()),
-            counted,
-            value,
-            window_start_unix_nanos: 7,
-            window_end_unix_nanos: 7,
-            observed_unix_nanos: 7,
-        });
-    }
-
-    /// The test cluster's first node receiving over `a` and `b` and sending over `a`, `b`
-    /// failed at receive; two Parties, the first sending over `a` and
-    /// receiving over `b`, the second the other way round.
-    fn drawn() -> Topology {
-        let mut snapshot = Snapshot::new();
-        health(&mut snapshot, "receive/a/json", Health::Fine);
-        health(&mut snapshot, "receive/b/json", Health::Done);
-        health(&mut snapshot, "send/a/json", Health::Fine);
-        count(&mut snapshot, "receive/a", Counted::Streams, 3);
-        count(&mut snapshot, "receive/b", Counted::Streams, 4);
-        count(&mut snapshot, "send/a", Counted::Messages, 5);
-        let mut topology = Topology {
-            source: String::new(),
-            observed_unix_nanos: 9,
-            nodes: members(&snapshot, &root(), &[node().as_str()]),
-            links: Vec::new(),
-        };
-        let (a, b) = (["a".to_string()], ["b".to_string()]);
-        let parties = [
-            Party {
-                name: "one",
-                sends: Some(&a),
-                receives: Some(&b),
-                transports: &[],
-            },
-            Party {
-                name: "two",
-                sends: Some(&b),
-                receives: Some(&a),
-                transports: &[],
-            },
-        ];
-        draw(
-            &snapshot,
-            &root(),
-            &[node().as_str()],
-            &parties,
-            &mut topology,
-        );
-        topology
-    }
-
-    #[test]
-    fn each_party_is_drawn_over_its_own_transports_on_each_side() {
-        let topology = drawn();
-        let parties: Vec<&str> = topology
-            .nodes
-            .iter()
-            .filter(|node| node.kind == NodeKind::Party)
-            .map(|node| node.id.as_str())
-            .collect();
-        // The first is delivered to over b, which no send stage holds.
-        assert_eq!(
-            parties,
-            [
-                "party/sending/one",
-                "party/sending/two",
-                "party/receiving/two"
-            ]
-        );
-        let link = |id: &str| {
-            topology
-                .links
-                .iter()
-                .find(|link| link.id == id)
-                .unwrap_or_else(|| panic!("{id}"))
-        };
-        let one = link(&format!("party/sending/one/{}", node()));
-        assert_eq!(
-            (one.protocol.as_str(), one.volume, one.state),
-            ("a", 3, Health::Fine)
-        );
-        let two = link(&format!("party/sending/two/{}", node()));
-        assert_eq!(
-            (two.protocol.as_str(), two.volume, two.state),
-            ("b", 4, Health::Done)
-        );
-        assert_eq!(link(&format!("party/receiving/two/{}", node())).volume, 5);
-    }
-
-    #[test]
-    fn a_party_everywhere_faces_every_endpoint_and_the_whole_count() {
-        let mut snapshot = Snapshot::new();
-        health(&mut snapshot, "receive/a/json", Health::Fine);
-        health(&mut snapshot, "receive/b/json", Health::Fine);
-        count(&mut snapshot, "receive", Counted::Streams, 9);
-        let mut topology = Topology {
-            source: String::new(),
-            observed_unix_nanos: 9,
-            nodes: members(&snapshot, &root(), &[node().as_str()]),
-            links: Vec::new(),
-        };
-        let transports = [
-            ("a".to_string(), "file".to_string()),
-            ("b".to_string(), "sftp".to_string()),
-        ];
-        let drawn = |transports| {
-            let mut drawing = topology.clone();
-            draw(
-                &snapshot,
-                &root(),
-                &[node().as_str()],
-                &[Party::over_locations("any", transports)],
-                &mut drawing,
-            );
-            drawing.links[0].clone()
-        };
-        // A running node's endpoints are its Locations: its link says the
-        // transports their addresses chose and names the Locations only in
-        // its evidence (ADR-0018, amendment 2026-11-11).
-        let link = drawn(&transports);
-        assert_eq!((link.protocol.as_str(), link.volume), ("2 transports", 9));
-        assert!(link.evidence.contains("at a, b"), "{}", link.evidence);
-        let one = [("a".to_string(), "file".to_string())];
-        draw(
-            &snapshot,
-            &root(),
-            &[node().as_str()],
-            &[Party::over_locations("any", &one)],
-            &mut topology,
-        );
-        assert_eq!(
-            topology.links[0].protocol, "file",
-            "one Location facing a Party says its transport, never its name"
-        );
-    }
-
-    #[test]
-    fn one_location_facing_a_party_gives_its_transport_never_its_name() {
-        let mut snapshot = Snapshot::new();
-        health(
-            &mut snapshot,
-            "receive/Sales orders from Party-A",
-            Health::Fine,
-        );
-        let mut topology = Topology {
-            source: String::new(),
-            observed_unix_nanos: 9,
-            nodes: members(&snapshot, &root(), &[node().as_str()]),
-            links: Vec::new(),
-        };
-        let transports = [("Sales orders from Party-A".to_string(), "file".to_string())];
-        draw(
-            &snapshot,
-            &root(),
-            &[node().as_str()],
-            &[Party::over_locations("any", &transports)],
-            &mut topology,
-        );
-        let link = &topology.links[0];
-        assert_eq!(link.protocol, "file");
-        assert!(
-            link.evidence.contains("at Sales orders from Party-A"),
-            "{}",
-            link.evidence
-        );
-    }
-}
+mod tests;

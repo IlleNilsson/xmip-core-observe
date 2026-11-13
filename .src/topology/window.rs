@@ -403,8 +403,9 @@ mod tests {
     use crate::health::Health;
     use crate::snapshot::{Count, HealthRecord};
     use crate::topology::draw::members;
-    use crate::topology::party::{self, Party};
-    use crate::topology::{Origin, Pattern, TopologyLink, TopologyNode};
+    use crate::topology::party;
+    use crate::topology::relate::Member;
+    use crate::topology::{Origin, Pattern, Relation, TopologyLink, TopologyNode};
 
     use configure::fixture::test_cluster;
 
@@ -456,16 +457,10 @@ mod tests {
         let mut topology = Topology {
             source: String::new(),
             observed_unix_nanos: second * SECOND,
-            nodes: members(&snapshot, &root(), &names),
+            nodes: members(&snapshot, &root(), &[Member::new(names[0], &[], None)]),
             links: Vec::new(),
         };
-        party::draw(
-            &snapshot,
-            &root(),
-            &names,
-            &[Party::everywhere("any")],
-            &mut topology,
-        );
+        party::facing(&snapshot, &root(), &names, &[], &mut topology);
         (topology, snapshot)
     }
 
@@ -494,7 +489,11 @@ mod tests {
     #[test]
     fn a_burst_keeps_moving_through_the_rounds_after_it_and_stops_once_it_left_the_window() {
         let mut window = Window::new();
-        let into = format!("party/sending/any/{}", node());
+        let into = crate::topology::link_id(
+            &format!("party/sending/node/{}", node()),
+            &format!("node/{}/receive", node()),
+            crate::topology::Relation::Traffic,
+        );
         let mut rates = Vec::new();
         for second in 0..=40 {
             let received = if second < 5 { 0 } else { 3 };
@@ -539,8 +538,8 @@ mod tests {
             (format!("{at}/send"), 2.0),
             ("cluster".to_string(), 10.0),
             // Nothing is counted beneath a Party: what its links carried.
-            ("party/sending/any".to_string(), 10.0),
-            ("party/receiving/any".to_string(), 2.0),
+            (format!("party/sending/{at}"), 10.0),
+            (format!("party/receiving/{at}"), 2.0),
         ] {
             let said = activity(&later, &id);
             assert!(near(said, expected), "{id}: {said}");
@@ -607,6 +606,7 @@ mod tests {
             to: to.to_string(),
             pattern: Pattern::SendReceive,
             origin: Origin::Both,
+            relation: Relation::Traffic,
             protocol: String::new(),
             state: Health::Fine,
             volume,
@@ -631,6 +631,8 @@ mod tests {
             load: 0.0,
             activity: 0.0,
             evidence: String::new(),
+            roles: String::new(),
+            place: None,
         };
         let mut window = Window::new();
         for (second, carried) in [(0, 0), (2, 8)] {
@@ -737,7 +739,11 @@ mod tests {
         // first time: what was drawn before is still measured over the
         // whole window.
         let mut window = Window::new();
-        let into = format!("party/sending/any/{}", node());
+        let into = crate::topology::link_id(
+            &format!("party/sending/node/{}", node()),
+            &format!("node/{}/receive", node()),
+            crate::topology::Relation::Traffic,
+        );
         for (second, received) in [(0, 0), (5, 10)] {
             let (mut topology, snapshot) = drawn(second, (received, 0, 0));
             window.state(&mut topology, &snapshot);
