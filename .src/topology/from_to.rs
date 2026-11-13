@@ -45,7 +45,7 @@ pub struct Hop {
 
 impl Hop {
     /// The hop as a person reads it in a from or a to: `Sales orders to ERP
-    /// [S2]`, `any-party over file`.
+    /// [TX2]`, `any-party over file`.
     #[must_use]
     pub fn words(&self) -> String {
         match (self.node.is_empty(), self.transport.is_empty()) {
