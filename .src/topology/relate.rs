@@ -188,6 +188,9 @@ struct Relating<'a> {
     known: BTreeMap<&'a str, Known<'a>>,
 }
 
+/// What a relation says of a stage where nothing is placed on it.
+const NONE: &str = "none placed";
+
 /// What a member's relations read of it, searched once.
 struct Known<'a> {
     /// The worst of its `<node>/reached` and `<node>/storage`.
@@ -199,26 +202,37 @@ struct Known<'a> {
 
 impl<'a> Known<'a> {
     /// What `member` of the cluster at `root` is known by in `beneath`,
-    /// what is placed on it only where the cluster is `storing`.
-    fn of(root: &str, member: &Member, beneath: &Beneath<'a>, storing: bool) -> Self {
+    /// asked of its own records, what is placed on it only where the
+    /// cluster is `storing`: each stage's line written once, at its length.
+    fn of(root: &str, member: &Member, beneath: &'a Beneath<'_>, storing: bool) -> Self {
         let scope = joined(&[root, "/node/", &member.node]);
+        let own = beneath.within(&scope);
         let held = ["reached", "storage"]
             .into_iter()
-            .filter_map(|leaf| beneath.worst(&joined(&[&scope, "/", leaf])))
+            .filter_map(|leaf| own.worst_beneath(&scope, leaf))
             .min_by(|a, b| a.standing().cmp(&b.standing()));
-        let mut said = String::new();
-        for stage in Stage::ALL
-            .into_iter()
-            .filter(|stage| storing && member.serves(*stage))
-        {
-            let beneath = placed(beneath, &scope, stage);
+        let on = Stage::ALL.map(|stage| {
+            (storing && member.serves(stage)).then(|| (stage.title(), placed(&own, &scope, stage)))
+        });
+        let length = on
+            .iter()
+            .flatten()
+            .map(|(title, placed)| {
+                let names: usize = placed.iter().map(|one| one.len()).sum();
+                let between = ", ".len() * placed.len().saturating_sub(1);
+                let none = if placed.is_empty() { NONE.len() } else { 0 };
+                "; ".len() + title.len() + ": ".len() + names + between + none
+            })
+            .sum();
+        let mut said = String::with_capacity(length);
+        for (title, placed) in on.iter().flatten() {
             said.push_str("; ");
-            said.push_str(stage.title());
+            said.push_str(title);
             said.push_str(": ");
-            if beneath.is_empty() {
-                said.push_str("none placed");
+            if placed.is_empty() {
+                said.push_str(NONE);
             }
-            for (at, one) in beneath.iter().enumerate() {
+            for (at, one) in placed.iter().enumerate() {
                 said.push_str(if at == 0 { "" } else { ", " });
                 said.push_str(one);
             }

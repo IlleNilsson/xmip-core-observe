@@ -38,7 +38,7 @@ pub const XMIP_STORAGE: &str = "Xmip Storage";
 pub const XMIP_OPERATE: &str = "Xmip operate";
 
 use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{BuildHasherDefault, Hasher};
 
 use serde::{Deserialize, Serialize};
 
@@ -102,11 +102,7 @@ impl Topology {
         let mut nodes = Ids::of(self.nodes.iter().map(|one| one.id.as_str()));
         let mut links = Ids::of(self.links.iter().map(|one| one.id.as_str()));
         for (name, node) in drawings {
-            let own = draw::node_id(name);
-            let owned = |id: &str| {
-                id.strip_prefix(&own)
-                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-            };
+            let owned = |id: &str| draw::owns(name, id);
             for drawn in &node.nodes {
                 let at = nodes.find(&drawn.id, &self.nodes, |one| &one.id);
                 match at.map(|at| &mut self.nodes[at]) {
@@ -145,22 +141,61 @@ impl Topology {
 }
 
 /// Where each id first stands in a drawing's nodes or links, by a hash of
-/// the id, so indexing a drawing copies none of its ids.
-struct Ids(HashMap<u64, usize>);
+/// the id, so indexing a drawing copies none of its ids. The hash is the
+/// index's own, [`Ids::hashed`], and the map takes it as its key's hash
+/// ([`Hashed`]): until 2026-11-14 each id was hashed twice by SipHash, a
+/// hash made to withstand a chosen key, which a drawing's own ids never are
+/// (ADR-0052, amendment 2026-11-14).
+struct Ids(HashMap<u64, usize, BuildHasherDefault<Hashed>>);
+
+/// The hasher of a map whose keys are hashes already: each key is its own
+/// hash.
+#[derive(Default)]
+struct Hashed(u64);
+
+impl Hasher for Hashed {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
+        }
+    }
+
+    fn write_u64(&mut self, key: u64) {
+        self.0 = key;
+    }
+}
 
 impl Ids {
-    fn of<'i>(ids: impl Iterator<Item = &'i str>) -> Self {
-        let mut index = Self(HashMap::new());
+    fn of<'i>(ids: impl ExactSizeIterator<Item = &'i str>) -> Self {
+        let mut index = Self(HashMap::with_capacity_and_hasher(
+            ids.len(),
+            BuildHasherDefault::default(),
+        ));
         for (at, id) in ids.enumerate() {
             index.pushed(id, at);
         }
         index
     }
 
+    /// A hash of `id`, its bytes taken eight at a time, each mixed in by a
+    /// rotation and a multiplication. Two ids sharing one are told apart
+    /// where they are found ([`Ids::find`]).
     fn hashed(id: &str) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        id.hash(&mut hasher);
-        hasher.finish()
+        const MIX: u64 = 0x517c_c1b7_2722_0a95;
+        let (words, rest) = id.as_bytes().as_chunks::<8>();
+        let mut last = [0; 8];
+        last[..rest.len()].copy_from_slice(rest);
+        let length = u64::try_from(id.len()).unwrap_or(u64::MAX);
+        words
+            .iter()
+            .chain([&last])
+            .fold(MIX ^ length, |hash, word| {
+                (hash.rotate_left(5) ^ u64::from_le_bytes(*word)).wrapping_mul(MIX)
+            })
     }
 
     /// Where `id` first stands among `things`, each called by `id_of`; a

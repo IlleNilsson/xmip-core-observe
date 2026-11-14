@@ -11,10 +11,13 @@
 //! many scopes at once searches them in [`Beneath`].
 
 mod beneath;
+mod kept;
 
 pub use beneath::Beneath;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+use kept::{Counting, Kept};
 
 use crate::counted::Counted;
 use crate::dead_message::DeadMessage;
@@ -70,11 +73,13 @@ pub struct Count {
 /// The published state of a node. One per node, written by the node.
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
-    health: BTreeMap<String, HealthRecord>,
-    counts: BTreeMap<(String, Counted), Count>,
+    /// Each scope's record, by its scope.
+    health: BTreeSet<Kept>,
+    /// Each count, by its scope and what it counted.
+    counts: BTreeSet<Counting>,
     /// What a paused scope looked like before it was paused, so resume puts
     /// it back rather than guessing.
-    paused: BTreeMap<String, HealthRecord>,
+    paused: BTreeSet<Kept>,
     /// The Event subscriptions each node's hub holds, by node and number
     /// (ADR-0065, amendment 2026-09-29).
     event_subscriptions: BTreeMap<(String, u64), EventSubscription>,
@@ -102,12 +107,12 @@ impl Snapshot {
     /// paused scope stays paused: the record is kept for resume and the
     /// published state does not change until then.
     pub fn record_health(&mut self, record: HealthRecord) {
-        if self.paused.contains_key(&record.scope) {
-            self.paused.insert(record.scope.clone(), record);
+        if self.paused.contains(record.scope.as_str()) {
+            self.paused.replace(Kept(record));
             return;
         }
 
-        self.health.insert(record.scope.clone(), record);
+        self.health.replace(Kept(record));
     }
 
     /// Record a count. Replaces what was there for that scope and kind. A
@@ -117,20 +122,19 @@ impl Snapshot {
             return;
         }
 
-        self.counts
-            .insert((count.scope.clone(), count.counted), count);
+        self.counts.replace(Counting(count));
     }
 
     /// Every health record in the snapshot, for a caller that retains history
     /// rather than reading one scope. Order is by scope; the reader does not
     /// depend on it.
     pub fn health_records(&self) -> impl Iterator<Item = &HealthRecord> {
-        self.health.values()
+        self.health.iter().map(|kept| &kept.0)
     }
 
     /// Every count in the snapshot, for the same reason.
     pub fn all_counts(&self) -> impl Iterator<Item = &Count> {
-        self.counts.values()
+        self.counts.iter().map(|counting| &counting.0)
     }
 
     /// Record one Event subscription a node's hub holds. Replaces what was
@@ -212,16 +216,16 @@ impl Snapshot {
     /// dropped the rest, so the Dead Message Queue and the failed Messages
     /// never reached the board (ADR-0052, amendment 2026-11-11).
     pub fn merge(&mut self, from: &Self) {
-        for record in from.health.values() {
+        for record in from.health_records() {
             self.record_health(record.clone());
         }
-        for count in from.counts.values() {
+        for count in from.all_counts() {
             self.record_count(count.clone());
         }
-        for (scope, before) in &from.paused {
-            self.paused
-                .entry(scope.clone())
-                .or_insert_with(|| before.clone());
+        for before in &from.paused {
+            if !self.paused.contains(before) {
+                self.paused.insert(before.clone());
+            }
         }
         for subscription in from.event_subscriptions.values() {
             self.record_event_subscription(subscription.clone());
@@ -247,29 +251,26 @@ impl Snapshot {
     pub fn pause(&mut self, scope: &str, who: &str, now: i64) -> usize {
         let scope = Scope::new(scope);
         let targets: Vec<String> = self
-            .health
-            .keys()
+            .health_records()
+            .map(|record| &record.scope)
             .filter(|recorded| scope.contains(Scope::new(recorded)))
             .cloned()
             .collect();
 
         for target in &targets {
-            if let Some(record) = self.health.remove(target) {
-                self.paused.insert(target.clone(), record);
+            if let Some(record) = self.health.take(target.as_str()) {
+                self.paused.replace(record);
             }
 
-            self.health.insert(
-                target.clone(),
-                HealthRecord {
-                    scope: target.clone(),
-                    health: Health::Paused,
-                    severity: PAUSED_SEVERITY,
-                    evidence: format!("paused by {who}"),
-                    observed_unix_nanos: now,
-                },
-            );
+            self.health.insert(Kept(HealthRecord {
+                scope: target.clone(),
+                health: Health::Paused,
+                severity: PAUSED_SEVERITY,
+                evidence: format!("paused by {who}"),
+                observed_unix_nanos: now,
+            }));
 
-            self.counts.retain(|(recorded, _), _| recorded != target);
+            self.counts.retain(|counting| counting.0.scope != *target);
         }
 
         targets.len()
@@ -281,14 +282,15 @@ impl Snapshot {
         let scope = Scope::new(scope);
         let targets: Vec<String> = self
             .paused
-            .keys()
+            .iter()
+            .map(|kept| &kept.0.scope)
             .filter(|recorded| scope.contains(Scope::new(recorded)))
             .cloned()
             .collect();
 
         for target in &targets {
-            if let Some(record) = self.paused.remove(target) {
-                self.health.insert(target.clone(), record);
+            if let Some(record) = self.paused.take(target.as_str()) {
+                self.health.replace(record);
             }
         }
 
@@ -300,8 +302,8 @@ impl Snapshot {
     pub fn is_paused(&self, scope: &str) -> bool {
         let scope = Scope::new(scope);
         self.paused
-            .keys()
-            .any(|paused| Scope::new(paused).contains(scope))
+            .iter()
+            .any(|paused| Scope::new(&paused.0.scope).contains(scope))
     }
 
     /// Health at and beneath a scope, worst first and, within a mood, most
@@ -311,8 +313,7 @@ impl Snapshot {
     pub fn health(&self, scope: &str) -> Vec<HealthRecord> {
         let scope = Scope::new(scope);
         let mut found: Vec<HealthRecord> = self
-            .health
-            .values()
+            .health_records()
             .filter(|record| scope.contains(Scope::new(&record.scope)))
             .cloned()
             .collect();
@@ -349,8 +350,7 @@ impl Snapshot {
     pub fn measure(&self, scope: &str, counted: Counted) -> Option<Count> {
         let within = Scope::new(scope);
         let parts: Vec<&Count> = self
-            .counts
-            .values()
+            .all_counts()
             .filter(|count| count.counted == counted && within.contains(Scope::new(&count.scope)))
             .collect();
 
