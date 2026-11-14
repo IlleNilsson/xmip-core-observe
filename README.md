@@ -46,12 +46,17 @@ one-drawing case. What no node can say of itself, the rollup at
 `<cluster>/node` — the worst leaf beneath every node, one point below it —
 is `rollup::nodes`, which the Essentials' cluster process and the runtime's
 gatherer (`runtime::plane::gather`) call alike (ADR-0052, amendment
-2026-11-13). A reader asking of many scopes at once searches a snapshot's
-records ordered by path once, `snapshot::Beneath`, finding what
-`Snapshot::health` finds; the drawing and the relations read through it
-and write their ids and scopes in one allocation each
-(`topology::draw::joined`), so a gatherer's view of a cluster drawing 176
-things is assembled within a millisecond. Where the work at
+2026-11-13). A snapshot keeps each record by its scope and each count by
+its scope and what it counted, read from the record, never a copy of the
+scope beside it as a key. A reader asking of many scopes at once searches a
+snapshot's records ordered by path once, segment by segment, so what is
+beneath a scope is one run of them: `snapshot::Beneath`, finding what
+`Snapshot::health` finds, a node's run borrowed and never copied, and a
+node's stages read in one pass over it. The drawing and the relations read
+through it and write each text once, into the drawn thing that keeps it
+(`topology::draw::joined`), and `merge_each` finds an id by a hash of its
+own, so a gatherer's view of a cluster drawing 176 things is assembled
+within a millisecond (ADR-0052, amendment 2026-11-14). Where the work at
 a scope came from and went is said here once too, `topology::from_to`, for
 every surface (`xmip_publication_from_to_v1`). The topology is drawn
 here too, once for every publisher (ADR-0052, amendment 2026-09-30):

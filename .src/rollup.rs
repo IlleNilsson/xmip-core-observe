@@ -20,12 +20,17 @@ use crate::topology::draw::node_rollup;
 pub fn nodes(snapshot: &Snapshot, root: &str, count: usize, now: i64) -> HealthRecord {
     let nodes = node_rollup(root);
     let beneath = Beneath::of(snapshot);
-    let (mut leaves, mut fine) = (0, 0);
+    // One pass: how many leaves, how many fine, and the worst, the first of
+    // the worst-first order (`Standing`).
+    let (mut leaves, mut fine, mut worst) = (0, 0, None::<&HealthRecord>);
     for record in beneath.records(&nodes) {
         leaves += 1;
         fine += usize::from(record.health == Health::Fine);
+        if worst.is_none_or(|one| record.standing() < one.standing()) {
+            worst = Some(record);
+        }
     }
-    let (health, severity, evidence) = match beneath.worst(&nodes) {
+    let (health, severity, evidence) = match worst {
         Some(record) if record.health != Health::Fine => (
             record.health,
             record.severity.saturating_sub(1),

@@ -49,10 +49,23 @@ pub fn system_process(node_scope: &str) -> String {
     format!("{}/{SYSTEM_PROCESS}", node_scope.trim_end_matches('/'))
 }
 
+/// What the id of every node of the cluster opens with, before its name.
+const NODE_ID: &str = "node/";
+
 /// The id of the node called `name`.
 #[must_use]
 pub fn node_id(name: &str) -> String {
-    joined(&["node/", name])
+    joined(&[NODE_ID, name])
+}
+
+/// Whether `id` is the node called `name` or a thing drawn beneath it,
+/// `node/<name>` or `node/<name>/…`: what that node owns of a drawing
+/// (`Topology::merge`), read without writing its id out.
+#[must_use]
+pub fn owns(name: &str, id: &str) -> bool {
+    id.strip_prefix(NODE_ID)
+        .and_then(|rest| rest.strip_prefix(name))
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// `parts` written one after another, in one allocation: what a drawing
@@ -131,20 +144,25 @@ pub fn fraction(part: usize, whole: usize) -> f64 {
 /// the roll from the cluster's file, a running node from itself — and
 /// followed by its stages and their endpoints, in the order given. The
 /// snapshot's records are ordered once, each member's searched once, and
-/// every scope of a member asked of its own ([`Beneath`]).
+/// every scope of a member asked of its own run of them ([`Beneath`]); each
+/// text is written once, into the drawn thing that keeps it.
 #[must_use]
 pub fn members(snapshot: &Snapshot, root: &str, members: &[Member]) -> Vec<TopologyNode> {
     let beneath = Beneath::of(snapshot);
-    let mut drawn = vec![cluster(&beneath, root)];
+    let mut drawn = Vec::with_capacity(1 + members.len());
+    drawn.push(cluster(&beneath, root));
     for member in members {
         let scope = joined(&[root, "/", NODE, "/", &member.node]);
         let own = beneath.within(&scope);
-        drawn.push(TopologyNode {
+        let at = drawn.len();
+        stages(&own, &member.node, &scope, &mut drawn);
+        // The node before its stages, its scope moved into it.
+        let node = TopologyNode {
             roles: member.words(),
             place: member.storage_place,
-            ..node(&own, &member.node, &scope)
-        });
-        drawn.extend(stages(&own, &member.node, &scope));
+            ..node(&own, &member.node, scope)
+        };
+        drawn.insert(at, node);
     }
     drawn
 }
@@ -153,13 +171,13 @@ pub fn members(snapshot: &Snapshot, root: &str, members: &[Member]) -> Vec<Topol
 /// name, once each: each Location or Port it reported on beneath receive and
 /// send, and beneath process each Subscription the node published it routes
 /// by — what its stage is drawn holding, and what a relation says is placed
-/// on it ([`super::relate`]).
+/// on it ([`super::relate`]). Borrowed from the snapshot.
 #[must_use]
-pub fn placed(beneath: &Beneath<'_>, node_scope: &str, stage: Stage) -> BTreeSet<String> {
+pub fn placed<'a>(beneath: &Beneath<'a>, node_scope: &str, stage: Stage) -> BTreeSet<&'a str> {
     if stage == Stage::Process {
         routed_by(beneath.snapshot(), node_scope)
     } else {
-        endpoints(beneath, &joined(&[node_scope, "/", stage.name()]))
+        endpoints(beneath, node_scope, stage.name())
     }
 }
 
@@ -191,17 +209,18 @@ pub fn cluster(beneath: &Beneath<'_>, root: &str) -> TopologyNode {
     }
 }
 
-/// One node of the cluster, the System Process it is (ADR-0028 clause 2).
+/// One node of the cluster at `scope`, the System Process it is (ADR-0028
+/// clause 2).
 #[must_use]
-pub fn node(beneath: &Beneath<'_>, name: &str, scope: &str) -> TopologyNode {
-    let worst = beneath.worst(scope);
-    let (state, evidence) = drawn(worst, scope);
+pub fn node(beneath: &Beneath<'_>, name: &str, scope: String) -> TopologyNode {
+    let worst = beneath.worst(&scope);
+    let (state, evidence) = drawn(worst, &scope);
     TopologyNode {
         id: node_id(name),
         parent: CLUSTER.to_string(),
         label: name.to_string(),
         kind: NodeKind::Node,
-        scope: scope.to_string(),
+        scope,
         state,
         origin: origin(worst),
         load: 0.0,
@@ -212,82 +231,89 @@ pub fn node(beneath: &Beneath<'_>, name: &str, scope: &str) -> TopologyNode {
     }
 }
 
-/// The stage nodes of the node called `name`, each followed by its
-/// endpoints: every stage the node **declared** it can serve, drawn before it
-/// has reported, and any stage it has reported on. Its name says nothing
-/// here (ADR-0056).
-#[must_use]
-pub fn stages(beneath: &Beneath<'_>, name: &str, scope: &str) -> Vec<TopologyNode> {
-    let declared = declared(beneath, scope);
-    let mut node = None;
-    let mut drawn = Vec::new();
-    for stage in Stage::ALL {
-        if !declared.can(stage) && !beneath.holds_beneath(scope, stage.name()) {
+/// The stage nodes of the node called `name` at `scope`, each followed by
+/// its endpoints, added to `drawn`: every stage the node **declared** it can
+/// serve, drawn before it has reported, and any stage it has reported on.
+/// Its name says nothing here (ADR-0056).
+pub fn stages(beneath: &Beneath<'_>, name: &str, scope: &str, drawn: &mut Vec<TopologyNode>) {
+    let (declared, reported) = reported(beneath, scope);
+    for (stage, reported) in Stage::ALL.into_iter().zip(reported) {
+        if !declared.can(stage) && !reported {
             continue;
         }
-        let node: &str = node.get_or_insert_with(|| node_id(name));
-        let (at, id) = (
-            joined(&[scope, "/", stage.name()]),
-            joined(&[node, "/", stage.name()]),
-        );
+        let (at, parent) = (joined(&[scope, "/", stage.name()]), node_id(name));
+        let id = joined(&[&parent, "/", stage.name()]);
         // Labeled by its title, Work Process for the process stage; the id
         // and the scope keep the word (ADR-0027, amendment 2026-11-11).
         let kind = (stage.title().to_string(), NodeKind::Stage);
-        drawn.push(part(
-            beneath.worst(&at),
-            (id.clone(), node),
-            kind,
-            at.clone(),
-        ));
+        let worst = beneath.worst(&at);
+        let staged = drawn.len();
+        drawn.push(part(worst, (id, parent), kind, at));
         // Beneath receive and send each Location or Port it reported on;
         // beneath the process stage each Subscription the node published
         // it routes by, which a Receive Location feeds, and nothing else
         // its scopes hold (ADR-0018, amendment 2026-11-11).
         for endpoint in placed(beneath, scope, stage) {
-            let within = joined(&[&at, "/", &endpoint]);
-            let ids = (joined(&[&id, "/", &endpoint]), id.as_str());
+            let on = &drawn[staged];
+            let within = joined(&[&on.scope, "/", endpoint]);
+            let ids = (joined(&[&on.id, "/", endpoint]), on.id.clone());
             let worst = beneath.worst(&within);
-            drawn.push(part(worst, ids, (endpoint, NodeKind::Endpoint), within));
+            let kind = (endpoint.to_string(), NodeKind::Endpoint);
+            drawn.push(part(worst, ids, kind, within));
         }
     }
-    drawn
 }
 
-/// What the node published at `<scope>/capability`: what it declared it can
-/// do, its roles saying which stages it serves. Nothing published is
-/// nothing declared — the node has yet to say, and only what it reports is
-/// drawn. A record naming a word that is no role is refused and draws no
-/// declared stage either; the record itself stays on the node's `capability`
-/// scope in the publisher's words.
-fn declared(beneath: &Beneath<'_>, scope: &str) -> Capability {
-    let at = crate::capability::scope(scope);
-    beneath
-        .records(&at)
-        .find(|record| record.scope == at)
+/// What the node at `scope` published at `<scope>/capability` — what it
+/// declared it can do, its roles saying which stages it serves — and which
+/// stages of [`Stage::ALL`] it reported on, a record at or beneath each,
+/// read in one pass over its records. Nothing published is nothing declared
+/// — the node has yet to say, and only what it reports is drawn. A record
+/// naming a word that is no role is refused and draws no declared stage
+/// either; the record itself stays on the node's `capability` scope in the
+/// publisher's words.
+fn reported(beneath: &Beneath<'_>, scope: &str) -> (Capability, [bool; Stage::ALL.len()]) {
+    let (mut declared, mut reported) = (None, [false; Stage::ALL.len()]);
+    for (leaf, record) in beneath.leaves(scope) {
+        if declared.is_none() && crate::capability::is_scope(&record.scope, scope) {
+            declared = Some(record);
+        }
+        for (stage, reported) in Stage::ALL.iter().zip(&mut reported) {
+            *reported |= leaf == Some(stage.name());
+        }
+    }
+    if scope.ends_with('/') {
+        // A leaf beneath it is found by the scope written out.
+        reported = Stage::ALL.map(|stage| beneath.holds_beneath(scope, stage.name()));
+    }
+    let declared = declared
         .and_then(|record| Capability::from_evidence(&record.evidence).ok())
-        .unwrap_or_else(Capability::none)
+        .unwrap_or_else(Capability::none);
+    (declared, reported)
 }
 
-/// The endpoints a stage has reported on: the segment after the stage in
-/// every scope beneath it, once each, in order.
-fn endpoints(beneath: &Beneath<'_>, stage_scope: &str) -> BTreeSet<String> {
-    let under = joined(&[stage_scope, "/"]);
+/// The endpoints the stage called `stage` of the node at `node_scope` has
+/// reported on: the segment after the stage in every scope beneath it, once
+/// each, in order.
+fn endpoints<'a>(beneath: &Beneath<'a>, node_scope: &str, stage: &str) -> BTreeSet<&'a str> {
     beneath
-        .records(stage_scope)
-        .filter_map(|record| record.scope.strip_prefix(&under))
+        .records_beneath(node_scope, stage)
+        .filter_map(|record| {
+            let rest = record.scope.strip_prefix(node_scope)?.strip_prefix('/')?;
+            rest.strip_prefix(stage)?.strip_prefix('/')
+        })
         .filter_map(|rest| rest.split('/').next())
         .filter(|endpoint| !endpoint.is_empty())
-        .map(str::to_string)
         .collect()
 }
 
 /// The Subscriptions the node at `scope` published it routes by, by name,
 /// once each: what its process stage is drawn holding (`Subscription`).
-fn routed_by(snapshot: &Snapshot, scope: &str) -> BTreeSet<String> {
+fn routed_by<'a>(snapshot: &'a Snapshot, scope: &str) -> BTreeSet<&'a str> {
     snapshot
         .subscriptions()
         .filter(|subscription| Scope::new(&subscription.node) == Scope::new(scope))
-        .map(|subscription| subscription.name.clone())
+        .map(|subscription| subscription.name.as_str())
         .collect()
 }
 
@@ -296,14 +322,14 @@ fn routed_by(snapshot: &Snapshot, scope: &str) -> BTreeSet<String> {
 /// beneath its scope (ADR-0041).
 fn part(
     worst: Option<&HealthRecord>,
-    (id, parent): (String, &str),
+    (id, parent): (String, String),
     (label, kind): (String, NodeKind),
     scope: String,
 ) -> TopologyNode {
     let (state, evidence) = drawn(worst, &scope);
     TopologyNode {
         id,
-        parent: parent.to_string(),
+        parent,
         label,
         kind,
         scope,

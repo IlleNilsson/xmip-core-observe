@@ -20,6 +20,17 @@ pub fn scope(node_scope: &str) -> String {
     format!("{}/{LEAF}", node_scope.trim_end_matches('/'))
 }
 
+/// Whether `record_scope` is, as written, the scope [`scope`] says the node
+/// at `node_scope` publishes its capability at: asked of every record
+/// beneath a node without writing that scope out.
+#[must_use]
+pub fn is_scope(record_scope: &str, node_scope: &str) -> bool {
+    record_scope
+        .strip_prefix(node_scope.trim_end_matches('/'))
+        .and_then(|rest| rest.strip_prefix('/'))
+        == Some(LEAF)
+}
+
 /// What the record at `record_scope` declares, when it is a capability
 /// record: the name of the node it sits beneath and the capability its
 /// evidence says. `None` for any other record.
@@ -53,6 +64,8 @@ mod tests {
         let place = format!("{}/node/{}", cluster.scope(), receiving.name);
         let at = scope(&place);
         assert_eq!(at, format!("{place}/capability"));
+        assert!(is_scope(&at, &place) && is_scope(&at, &format!("{place}/")));
+        assert!(!is_scope(&format!("{at}/more"), &place) && !is_scope(&place, &place));
 
         let evidence = Capability::of(&[NodeRole::Receiving]).evidence();
         let (node, said) = declared(&at, &evidence).expect("a capability record");
