@@ -9,9 +9,7 @@
 //! [`declared`], which the runtime's cdylib forwards as
 //! `xmip_capability_published_v1` (`xmip_operate.h` section 7).
 
-use node::Capability;
-
-use crate::scope::Scope;
+use node::{Capability, Scope};
 
 /// The leaf a node's capability record sits at, beneath the node.
 const LEAF: &str = "capability";

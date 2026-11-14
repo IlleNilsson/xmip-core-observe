@@ -37,6 +37,9 @@ pub const XMIP_STORAGE: &str = "Xmip Storage";
 /// runs over: each node's operate listener (ADR-0014, ADR-0063).
 pub const XMIP_OPERATE: &str = "Xmip operate";
 
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use serde::{Deserialize, Serialize};
 
 use crate::health::Health;
@@ -49,7 +52,7 @@ use crate::publication::mood;
 /// two (ADR-0052, amendment 2026-11-13).
 #[must_use]
 pub fn link_id(from: &str, to: &str, relation: Relation) -> String {
-    format!("{from}→{to} {}", relation.word())
+    draw::joined(&[from, "→", to, " ", relation.word()])
 }
 
 /// The nodes and links a publication carries under `[topology]`.
@@ -86,47 +89,170 @@ impl Topology {
     /// ([`Origin::joined`]), whichever order the drawings merge in (ADR-0052,
     /// amendment 2026-11-13).
     pub fn merge(&mut self, name: &str, node: &Self) {
-        let own = draw::node_id(name);
-        let owned = |id: &str| {
-            id.strip_prefix(&own)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-        };
-        for drawn in &node.nodes {
-            match self.nodes.iter_mut().find(|one| one.id == drawn.id) {
-                Some(one) if owned(&drawn.id) => {
-                    let mut merged = drawn.clone();
-                    if one.state > drawn.state {
-                        merged.state = one.state;
-                        merged.evidence = std::mem::take(&mut one.evidence);
+        self.merge_each([(name, node)]);
+    }
+
+    /// What each node drew of itself, `(name, drawing)`, merged in turn as
+    /// [`Topology::merge`] merges one: what a reader merging every node of a
+    /// cluster calls. Each thing is found by its id in an index kept as the
+    /// drawing grows, so merging a cluster costs a pass over each drawing
+    /// and not one over the whole for each thing (ADR-0052, amendment
+    /// 2026-11-13).
+    pub fn merge_each<'d>(&mut self, drawings: impl IntoIterator<Item = (&'d str, &'d Self)>) {
+        let mut nodes = Ids::of(self.nodes.iter().map(|one| one.id.as_str()));
+        let mut links = Ids::of(self.links.iter().map(|one| one.id.as_str()));
+        for (name, node) in drawings {
+            let own = draw::node_id(name);
+            let owned = |id: &str| {
+                id.strip_prefix(&own)
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+            };
+            for drawn in &node.nodes {
+                let at = nodes.find(&drawn.id, &self.nodes, |one| &one.id);
+                match at.map(|at| &mut self.nodes[at]) {
+                    Some(one) if owned(&drawn.id) => one.taken_from(drawn),
+                    Some(_) => {}
+                    None => {
+                        nodes.pushed(&drawn.id, self.nodes.len());
+                        self.nodes.push(drawn.clone());
                     }
-                    if merged.roles.is_empty() {
-                        merged.roles = std::mem::take(&mut one.roles);
-                    }
-                    merged.place = merged.place.or(one.place);
-                    *one = merged;
                 }
-                Some(_) => {}
-                None => self.nodes.push(drawn.clone()),
+            }
+            for drawn in &node.links {
+                let at = links.find(&drawn.id, &self.links, |one| &one.id);
+                match at.map(|at| &mut self.links[at]) {
+                    Some(one) => {
+                        let origin = one.origin.joined(drawn.origin);
+                        let observed = |link: &TopologyLink| link.origin != Origin::Configured;
+                        let theirs = if observed(drawn) == observed(one) {
+                            owned(&drawn.from) || owned(&drawn.to)
+                        } else {
+                            observed(drawn)
+                        };
+                        if theirs {
+                            one.taken_from(drawn);
+                        }
+                        one.origin = origin;
+                    }
+                    None => {
+                        links.pushed(&drawn.id, self.links.len());
+                        self.links.push(drawn.clone());
+                    }
+                }
             }
         }
-        for drawn in &node.links {
-            match self.links.iter_mut().find(|one| one.id == drawn.id) {
-                Some(one) => {
-                    let origin = one.origin.joined(drawn.origin);
-                    let observed = |link: &TopologyLink| link.origin != Origin::Configured;
-                    let theirs = if observed(drawn) == observed(one) {
-                        owned(&drawn.from) || owned(&drawn.to)
-                    } else {
-                        observed(drawn)
-                    };
-                    if theirs {
-                        *one = drawn.clone();
-                    }
-                    one.origin = origin;
-                }
-                None => self.links.push(drawn.clone()),
-            }
+    }
+}
+
+/// Where each id first stands in a drawing's nodes or links, by a hash of
+/// the id, so indexing a drawing copies none of its ids.
+struct Ids(HashMap<u64, usize>);
+
+impl Ids {
+    fn of<'i>(ids: impl Iterator<Item = &'i str>) -> Self {
+        let mut index = Self(HashMap::new());
+        for (at, id) in ids.enumerate() {
+            index.pushed(id, at);
         }
+        index
+    }
+
+    fn hashed(id: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Where `id` first stands among `things`, each called by `id_of`; a
+    /// hash two ids share is told apart by a pass over them.
+    fn find<T>(&self, id: &str, things: &[T], id_of: impl Fn(&T) -> &String) -> Option<usize> {
+        match self.0.get(&Self::hashed(id)) {
+            Some(&at) if id_of(&things[at]) == id => Some(at),
+            Some(_) => things.iter().position(|one| id_of(one) == id),
+            None => None,
+        }
+    }
+
+    /// `id` standing at `at`, where no id of its hash stood before.
+    fn pushed(&mut self, id: &str, at: usize) {
+        self.0.entry(Self::hashed(id)).or_insert(at);
+    }
+}
+
+impl TopologyNode {
+    /// What `drawn` says of this thing taken in, as [`Topology::merge`]
+    /// merges a node's own thing: all of it but its mood where this one's
+    /// is worse, which keeps its evidence, its roles where it said none, and
+    /// its place where it said none — the text written into what this one
+    /// holds rather than copied anew.
+    fn taken_from(&mut self, drawn: &Self) {
+        let Self {
+            id,
+            parent,
+            label,
+            kind,
+            scope,
+            state,
+            origin,
+            load,
+            activity,
+            evidence,
+            roles,
+            place,
+        } = drawn;
+        self.id.clone_from(id);
+        self.parent.clone_from(parent);
+        self.label.clone_from(label);
+        self.kind = *kind;
+        self.scope.clone_from(scope);
+        if self.state <= *state {
+            self.state = *state;
+            self.evidence.clone_from(evidence);
+        }
+        self.origin = *origin;
+        self.load = *load;
+        self.activity = *activity;
+        if !roles.is_empty() {
+            self.roles.clone_from(roles);
+        }
+        self.place = place.or(self.place);
+    }
+}
+
+impl TopologyLink {
+    /// All of `drawn`, written into what this link holds rather than copied
+    /// anew.
+    fn taken_from(&mut self, drawn: &Self) {
+        let Self {
+            id,
+            from,
+            to,
+            pattern,
+            origin,
+            relation,
+            protocol,
+            state,
+            volume,
+            rate,
+            latency_ms,
+            progress,
+            attempts,
+            evidence,
+        } = drawn;
+        self.id.clone_from(id);
+        self.from.clone_from(from);
+        self.to.clone_from(to);
+        self.pattern = *pattern;
+        self.origin = *origin;
+        self.relation = *relation;
+        self.protocol.clone_from(protocol);
+        self.state = *state;
+        self.volume = *volume;
+        self.rate = *rate;
+        self.latency_ms = *latency_ms;
+        self.progress = *progress;
+        self.attempts = *attempts;
+        self.evidence.clone_from(evidence);
     }
 }
 

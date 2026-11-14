@@ -44,9 +44,9 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::counted::Counted;
-use crate::scope::Scope;
 use crate::snapshot::{Count, Snapshot};
 use crate::topology::{NodeKind, Topology, draw};
+use node::Scope;
 
 /// How far back a [`Window`] measures, in nanoseconds: half a minute, so a
 /// link that carries a Message every few seconds reads as moving between
