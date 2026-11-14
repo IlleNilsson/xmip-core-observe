@@ -23,10 +23,10 @@
 use std::collections::BTreeSet;
 
 use node::Stage;
+use node::scope::{NODE, Scope};
 use serde::Serialize;
 
 use super::{Topology, TopologyLink, XMIP_STORAGE};
-use crate::scope::{NODE, Scope};
 use crate::snapshot::Snapshot;
 
 /// Where what a Subscription takes none of goes: what a Dead Message Queue

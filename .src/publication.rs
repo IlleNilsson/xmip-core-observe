@@ -2,7 +2,7 @@
 //! read here and nowhere else.
 //!
 //! A publisher and its readers are separate processes, and the bridge
-//! between them is a file. Its shape — `source`, `node`, `orders`,
+//! between them is a file. Its shape — `source`, `node`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
 //! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`, and a roll's `[run]` and
 //! `[topology]` — was written by the
@@ -50,11 +50,6 @@ pub struct Publication {
     pub source: String,
     /// The scope it publishes at: a node's, or a roll's cluster.
     pub node: String,
-    /// Where a surface leaves an operator's act on a Subscription or an
-    /// Event subscription for the publisher to take ([`crate::Order`]),
-    /// empty where the publisher takes none (ADR-0065, amendment
-    /// 2026-09-29; ADR-0013, amendment 2026-09-30).
-    pub orders: String,
     /// The health records beneath `node`, worst first.
     pub records: Vec<HealthRecord>,
     /// The counts: each at the scope it was recorded at, or at `node` where
@@ -89,7 +84,6 @@ impl Publication {
         Self {
             source: source.to_string(),
             node: node.to_string(),
-            orders: String::new(),
             records: snapshot.health(node),
             counts: snapshot.all_counts().cloned().collect(),
             subscriptions: snapshot.subscriptions().cloned().collect(),
@@ -109,13 +103,6 @@ impl Publication {
         self
     }
 
-    /// The same publication saying where a surface leaves its acts.
-    #[must_use]
-    pub fn with_orders(mut self, orders: impl Into<String>) -> Self {
-        self.orders = orders.into();
-        self
-    }
-
     /// The same publication carrying its topology.
     #[must_use]
     pub fn with_topology(mut self, topology: Option<Topology>) -> Self {
@@ -130,7 +117,6 @@ impl Publication {
         let document = Document {
             source: self.source.clone(),
             node: self.node.clone(),
-            orders: self.orders.clone(),
             records: self.records.iter().map(RecordDocument::of).collect(),
             counts: self
                 .counts
@@ -219,7 +205,6 @@ impl Publication {
         Ok(Self {
             source: document.source,
             node,
-            orders: document.orders,
             records: document
                 .records
                 .into_iter()
@@ -316,8 +301,6 @@ struct Document {
     source: String,
     #[serde(default)]
     node: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    orders: String,
     #[serde(default)]
     records: Vec<RecordDocument>,
     #[serde(default)]
@@ -521,9 +504,7 @@ mod tests {
         snapshot.record_event_subscription(held.clone());
         snapshot.record_event_subscription(held.clone());
         snapshot.record_subscription(routed.clone());
-        let text = Publication::whole("roll", &cluster.scope(), &snapshot)
-            .with_orders("shared/orders")
-            .to_toml();
+        let text = Publication::whole("roll", &cluster.scope(), &snapshot).to_toml();
         assert!(text.contains("[[event_subscriptions]]"), "{text}");
         assert!(
             text.contains("[[subscriptions]]") && text.contains("held = 4"),
@@ -531,16 +512,12 @@ mod tests {
         );
 
         let read = Publication::read(&text).expect("reads");
-        assert_eq!(read.orders, "shared/orders");
         assert_eq!(read.event_subscriptions, vec![held]);
         assert_eq!(read.subscriptions, vec![routed]);
         assert_eq!(read.snapshot().event_subscriptions().count(), 1);
         assert_eq!(read.snapshot().subscriptions().count(), 1);
         let bare = Publication::whole("n", &node(), &Snapshot::new()).to_toml();
-        assert!(
-            !bare.contains("orders") && !bare.contains("subscriptions"),
-            "{bare}"
-        );
+        assert!(!bare.contains("subscriptions"), "{bare}");
     }
 
     #[test]
@@ -550,14 +527,14 @@ mod tests {
             .join("snapshot.xmip");
         std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 
-        let written = Publication::whole("n", &node(), &published()).with_orders("orders");
+        let written = Publication::whole("n", &node(), &published());
         written.write(&path).expect("written");
 
         let text = std::fs::read_to_string(&path).expect("read");
         assert_eq!(text, written.to_toml());
         assert_eq!(
-            Publication::read(&text).map(|read| read.orders),
-            Ok("orders".into())
+            Publication::read(&text).map(|read| read.node),
+            Ok(written.node.clone())
         );
         let beside: Vec<_> = std::fs::read_dir(path.parent().expect("parent"))
             .expect("listed")

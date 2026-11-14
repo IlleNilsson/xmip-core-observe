@@ -7,7 +7,12 @@
 //!
 //! Scope is an Xmip URI path over the execution tree, clause 4, and
 //! [`Scope::contains`] is the prefix rule: health up the tree is the worst
-//! beneath, and a count up the tree is the sum beneath.
+//! beneath, and a count up the tree is the sum beneath. A reader asking of
+//! many scopes at once searches them in [`Beneath`].
+
+mod beneath;
+
+pub use beneath::Beneath;
 
 use std::collections::BTreeMap;
 
@@ -16,9 +21,9 @@ use crate::dead_message::DeadMessage;
 use crate::event_subscription::EventSubscription;
 use crate::failed_message::FailedMessages;
 use crate::health::{Health, Standing};
-use crate::scope::Scope;
 use crate::subscription::Subscription;
 use crate::unheard::Unheard;
+use node::Scope;
 
 /// The severity a paused scope publishes. A category, not a measurement: a
 /// deliberate stop is a correctable state, and it stays that however long it

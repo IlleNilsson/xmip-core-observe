@@ -27,7 +27,7 @@ is `topology::window::Window`'s, which the publisher keeps and no surface
 computes: over its earlier readings of the last thirty seconds it states on
 each drawing every link's rate and every drawn thing's activity, per
 second — the most of the Streams, Journeys or Messages counted on a stage
-of the message path (`Scope::stage`) at and beneath it, never a test's
+of the message path (`node::Scope::stage`) at and beneath it, never a test's
 gauge beneath a node, the cluster's beneath its nodes, or the more of what
 its links carried in or out — zero where nothing moved, a figure that fell measured from its
 fall, and a clock that steps back starting the window over (ADR-0052,
@@ -40,7 +40,18 @@ every file a surface reads a publisher's state from. A reader showing many
 publishers as one merges them here once: `Snapshot::merge`, every table,
 and `Topology::merge`, a node's own drawing winning for itself and what is
 beneath it but for a mood the reader holds worse, and its links where
-either end is its own (ADR-0052, amendments 2026-11-11). Where the work at
+either end is its own (ADR-0052, amendments 2026-11-11); `merge_each`
+merges every node's drawing through one index, and `merge` is its
+one-drawing case. What no node can say of itself, the rollup at
+`<cluster>/node` — the worst leaf beneath every node, one point below it —
+is `rollup::nodes`, which the Essentials' cluster process and the runtime's
+gatherer (`runtime::plane::gather`) call alike (ADR-0052, amendment
+2026-11-13). A reader asking of many scopes at once searches a snapshot's
+records ordered by path once, `snapshot::Beneath`, finding what
+`Snapshot::health` finds; the drawing and the relations read through it
+and write their ids and scopes in one allocation each
+(`topology::draw::joined`), so a gatherer's view of a cluster drawing 176
+things is assembled within a millisecond. Where the work at
 a scope came from and went is said here once too, `topology::from_to`, for
 every surface (`xmip_publication_from_to_v1`). The topology is drawn
 here too, once for every publisher (ADR-0052, amendment 2026-09-30):
@@ -98,32 +109,20 @@ with why — apart from the last that failed there since the node started,
 which is history (`FailedMessages`: node, Send Port, `count`, `blocked`, each
 `FailedMessage`'s identifier, place and reason, and `last_failure`;
 `runtime-model.md` section 13), kept by node and Port
-(`Snapshot::record_failed_messages`), as `[[failed_messages]]`. `orders` is the
-directory where its publisher takes an operator's act on any of them:
-`Order` writes and takes the file, `Act` names pause, resume, remove,
-replay, retry and dismiss once, and `Noun` says which acts each takes — an
+(`Snapshot::record_failed_messages`), as `[[failed_messages]]`. A snapshot
+is read and never acted on: an operator's act on any of them is asked at a
+node's door and reaches its node through Xmip Storage (ADR-0014, amendment
+2026-11-13). `Order` is one act asked of one node, `Act` names pause, resume,
+remove, replay, retry and dismiss once, and `Noun` says which acts each takes — an
 Event subscription pause, resume and remove, a Subscription pause and resume
 only, since it is added and removed in the TOML configuration, a Message in
 the Dead Message Queue (`dead-message`) replay only, and a Message that
 failed (`message`, by its Journey's identifier) retry and dismiss (`runtime-model.md`
 section 13, built 2026-10-04).
 
-A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4).
-`Scope` reads one — the scheme and the authority go, a slash at either end
-is ignored, empty text is the root — `Scope::segments` splits it, and
-`Scope::contains` is the one containment rule the snapshot and the activity
-log answer by: at and beneath, by segment, never by character. `Scope::node`
-is the node a scope is on — the segment after the `node` marker beneath the
-cluster, `xmip:///<cluster>/node/<name>` (ADR-0053), and none for a scope on
-no node, since the cluster is never one — and `Scope::stage` the stage of the
-message path it is on, beneath its node or its cluster, so no name is read as
-a stage.
-
-The one wildcard over scopes is `wildcard::matches`: `*` and `?`, literal
-everything else, case-insensitive, `*` crossing a `/`, both sides read as
-scopes first (ADR-0052, amendment 2026-09-19). It moved here from
-`Xmip.Surface`'s `ScopePattern` on 2026-09-29, when the audit read needed it
-in Rust; the runtime forwards it as `xmip_scope_matches_v1`.
+A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4):
+the snapshot and the activity log answer at and beneath a scope by
+`xmip-core-node`'s one rule, `node::Scope::contains`.
 
 Whether something a run made is shown is `run::shown`: always where the run
 declared nothing, and where `Run::hidden` says it declared itself hidden only

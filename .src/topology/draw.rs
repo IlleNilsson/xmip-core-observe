@@ -23,11 +23,11 @@
 
 use std::collections::BTreeSet;
 
+use node::scope::{NODE, Scope};
 use node::{Capability, Stage};
 
 use crate::health::Health;
-use crate::scope::{NODE, Scope};
-use crate::snapshot::{HealthRecord, Snapshot};
+use crate::snapshot::{Beneath, HealthRecord, Snapshot};
 use crate::topology::relate::Member;
 use crate::topology::{NodeKind, Origin, TopologyNode};
 
@@ -52,7 +52,19 @@ pub fn system_process(node_scope: &str) -> String {
 /// The id of the node called `name`.
 #[must_use]
 pub fn node_id(name: &str) -> String {
-    format!("node/{name}")
+    joined(&["node/", name])
+}
+
+/// `parts` written one after another, in one allocation: what a drawing
+/// writes its ids and scopes with, thousands a round, where `format!` grows
+/// its text as it writes and allocates several times for one.
+#[must_use]
+pub fn joined(parts: &[&str]) -> String {
+    let mut text = String::with_capacity(parts.iter().map(|part| part.len()).sum());
+    for part in parts {
+        text.push_str(part);
+    }
+    text
 }
 
 /// The last segment of a scope: what a thing is called.
@@ -92,13 +104,14 @@ pub fn mood(record: Option<&HealthRecord>) -> (Health, String) {
     )
 }
 
-/// Configured, and observed too once something reported on it.
+/// Configured, and observed too once something reported on it: `worst`,
+/// the worst record at or beneath the drawn thing's scope, where any is.
 #[must_use]
-pub fn origin(snapshot: &Snapshot, scope: &str) -> Origin {
-    if snapshot.health(scope).is_empty() {
-        Origin::Configured
-    } else {
+pub const fn origin(worst: Option<&HealthRecord>) -> Origin {
+    if worst.is_some() {
         Origin::Both
+    } else {
+        Origin::Configured
     }
 }
 
@@ -116,18 +129,22 @@ pub fn fraction(part: usize, whole: usize) -> f64 {
 /// The cluster at `root` and every member, each saying the roles it
 /// declares and its place in `[storage] nodes` as its caller knows them —
 /// the roll from the cluster's file, a running node from itself — and
-/// followed by its stages and their endpoints, in the order given.
+/// followed by its stages and their endpoints, in the order given. The
+/// snapshot's records are ordered once, each member's searched once, and
+/// every scope of a member asked of its own ([`Beneath`]).
 #[must_use]
 pub fn members(snapshot: &Snapshot, root: &str, members: &[Member]) -> Vec<TopologyNode> {
-    let mut drawn = vec![cluster(snapshot, root)];
+    let beneath = Beneath::of(snapshot);
+    let mut drawn = vec![cluster(&beneath, root)];
     for member in members {
-        let scope = format!("{root}/node/{}", member.node);
+        let scope = joined(&[root, "/", NODE, "/", &member.node]);
+        let own = beneath.within(&scope);
         drawn.push(TopologyNode {
             roles: member.words(),
             place: member.storage_place,
-            ..node(snapshot, &member.node, &scope)
+            ..node(&own, &member.node, &scope)
         });
-        drawn.extend(stages(snapshot, &member.node, &scope));
+        drawn.extend(stages(&own, &member.node, &scope));
     }
     drawn
 }
@@ -138,11 +155,11 @@ pub fn members(snapshot: &Snapshot, root: &str, members: &[Member]) -> Vec<Topol
 /// by — what its stage is drawn holding, and what a relation says is placed
 /// on it ([`super::relate`]).
 #[must_use]
-pub fn placed(snapshot: &Snapshot, node_scope: &str, stage: Stage) -> BTreeSet<String> {
+pub fn placed(beneath: &Beneath<'_>, node_scope: &str, stage: Stage) -> BTreeSet<String> {
     if stage == Stage::Process {
-        routed_by(snapshot, node_scope)
+        routed_by(beneath.snapshot(), node_scope)
     } else {
-        endpoints(snapshot, &format!("{node_scope}/{}", stage.name()))
+        endpoints(beneath, &joined(&[node_scope, "/", stage.name()]))
     }
 }
 
@@ -156,8 +173,8 @@ pub fn node_rollup(root: &str) -> String {
 
 /// The cluster: its mood the rollup over its nodes.
 #[must_use]
-pub fn cluster(snapshot: &Snapshot, root: &str) -> TopologyNode {
-    let (state, evidence) = drawn(worst(snapshot, &node_rollup(root)).as_ref(), root);
+pub fn cluster(beneath: &Beneath<'_>, root: &str) -> TopologyNode {
+    let (state, evidence) = drawn(beneath.worst(&node_rollup(root)), root);
     TopologyNode {
         id: CLUSTER.to_string(),
         parent: String::new(),
@@ -176,8 +193,9 @@ pub fn cluster(snapshot: &Snapshot, root: &str) -> TopologyNode {
 
 /// One node of the cluster, the System Process it is (ADR-0028 clause 2).
 #[must_use]
-pub fn node(snapshot: &Snapshot, name: &str, scope: &str) -> TopologyNode {
-    let (state, evidence) = drawn(worst(snapshot, scope).as_ref(), scope);
+pub fn node(beneath: &Beneath<'_>, name: &str, scope: &str) -> TopologyNode {
+    let worst = beneath.worst(scope);
+    let (state, evidence) = drawn(worst, scope);
     TopologyNode {
         id: node_id(name),
         parent: CLUSTER.to_string(),
@@ -185,7 +203,7 @@ pub fn node(snapshot: &Snapshot, name: &str, scope: &str) -> TopologyNode {
         kind: NodeKind::Node,
         scope: scope.to_string(),
         state,
-        origin: origin(snapshot, scope),
+        origin: origin(worst),
         load: 0.0,
         activity: 0.0,
         evidence,
@@ -199,38 +217,37 @@ pub fn node(snapshot: &Snapshot, name: &str, scope: &str) -> TopologyNode {
 /// has reported, and any stage it has reported on. Its name says nothing
 /// here (ADR-0056).
 #[must_use]
-pub fn stages(snapshot: &Snapshot, name: &str, scope: &str) -> Vec<TopologyNode> {
-    let declared = declared(snapshot, scope);
+pub fn stages(beneath: &Beneath<'_>, name: &str, scope: &str) -> Vec<TopologyNode> {
+    let declared = declared(beneath, scope);
+    let mut node = None;
     let mut drawn = Vec::new();
     for stage in Stage::ALL {
-        let at = format!("{scope}/{}", stage.name());
-        if !declared.can(stage) && snapshot.health(&at).is_empty() {
+        if !declared.can(stage) && !beneath.holds_beneath(scope, stage.name()) {
             continue;
         }
-        let id = format!("{}/{}", node_id(name), stage.name());
+        let node: &str = node.get_or_insert_with(|| node_id(name));
+        let (at, id) = (
+            joined(&[scope, "/", stage.name()]),
+            joined(&[node, "/", stage.name()]),
+        );
         // Labeled by its title, Work Process for the process stage; the id
         // and the scope keep the word (ADR-0027, amendment 2026-11-11).
+        let kind = (stage.title().to_string(), NodeKind::Stage);
         drawn.push(part(
-            snapshot,
-            &id,
-            &node_id(name),
-            stage.title(),
-            NodeKind::Stage,
-            &at,
+            beneath.worst(&at),
+            (id.clone(), node),
+            kind,
+            at.clone(),
         ));
         // Beneath receive and send each Location or Port it reported on;
         // beneath the process stage each Subscription the node published
         // it routes by, which a Receive Location feeds, and nothing else
         // its scopes hold (ADR-0018, amendment 2026-11-11).
-        for endpoint in placed(snapshot, scope, stage) {
-            drawn.push(part(
-                snapshot,
-                &format!("{id}/{endpoint}"),
-                &id,
-                &endpoint,
-                NodeKind::Endpoint,
-                &format!("{at}/{endpoint}"),
-            ));
+        for endpoint in placed(beneath, scope, stage) {
+            let within = joined(&[&at, "/", &endpoint]);
+            let ids = (joined(&[&id, "/", &endpoint]), id.as_str());
+            let worst = beneath.worst(&within);
+            drawn.push(part(worst, ids, (endpoint, NodeKind::Endpoint), within));
         }
     }
     drawn
@@ -242,27 +259,22 @@ pub fn stages(snapshot: &Snapshot, name: &str, scope: &str) -> Vec<TopologyNode>
 /// drawn. A record naming a word that is no role is refused and draws no
 /// declared stage either; the record itself stays on the node's `capability`
 /// scope in the publisher's words.
-fn declared(snapshot: &Snapshot, scope: &str) -> Capability {
+fn declared(beneath: &Beneath<'_>, scope: &str) -> Capability {
     let at = crate::capability::scope(scope);
-    snapshot
-        .health(&at)
-        .into_iter()
+    beneath
+        .records(&at)
         .find(|record| record.scope == at)
-        .and_then(|record| {
-            crate::capability::declared(&record.scope, &record.evidence)
-                .and_then(|(_, said)| said.ok())
-        })
+        .and_then(|record| Capability::from_evidence(&record.evidence).ok())
         .unwrap_or_else(Capability::none)
 }
 
 /// The endpoints a stage has reported on: the segment after the stage in
 /// every scope beneath it, once each, in order.
-fn endpoints(snapshot: &Snapshot, stage_scope: &str) -> BTreeSet<String> {
-    let beneath = format!("{stage_scope}/");
-    snapshot
-        .health(stage_scope)
-        .iter()
-        .filter_map(|record| record.scope.strip_prefix(&beneath))
+fn endpoints(beneath: &Beneath<'_>, stage_scope: &str) -> BTreeSet<String> {
+    let under = joined(&[stage_scope, "/"]);
+    beneath
+        .records(stage_scope)
+        .filter_map(|record| record.scope.strip_prefix(&under))
         .filter_map(|rest| rest.split('/').next())
         .filter(|endpoint| !endpoint.is_empty())
         .map(str::to_string)
@@ -279,25 +291,24 @@ fn routed_by(snapshot: &Snapshot, scope: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// A stage or an endpoint: its own mood, or the rollup over the worst
+/// A stage or an endpoint at `scope`, its `id` beneath `parent`, labelled as
+/// `kind`: its own mood, or the rollup over `worst`, the worst record
 /// beneath its scope (ADR-0041).
 fn part(
-    snapshot: &Snapshot,
-    id: &str,
-    parent: &str,
-    label: &str,
-    kind: NodeKind,
-    scope: &str,
+    worst: Option<&HealthRecord>,
+    (id, parent): (String, &str),
+    (label, kind): (String, NodeKind),
+    scope: String,
 ) -> TopologyNode {
-    let (state, evidence) = drawn(worst(snapshot, scope).as_ref(), scope);
+    let (state, evidence) = drawn(worst, &scope);
     TopologyNode {
-        id: id.to_string(),
+        id,
         parent: parent.to_string(),
-        label: label.to_string(),
+        label,
         kind,
-        scope: scope.to_string(),
+        scope,
         state,
-        origin: origin(snapshot, scope),
+        origin: origin(worst),
         load: 0.0,
         activity: 0.0,
         evidence,

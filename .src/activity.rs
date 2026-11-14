@@ -12,7 +12,7 @@
 
 use std::collections::VecDeque;
 
-use crate::scope::Scope;
+use node::Scope;
 
 /// Which of the three units an item is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

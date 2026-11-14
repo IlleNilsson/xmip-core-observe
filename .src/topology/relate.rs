@@ -28,12 +28,14 @@
 //! A lone node's own publication draws no relation: relations are the
 //! cluster's facts, drawn wherever a cluster is.
 
+use std::collections::BTreeMap;
+
 use node::{Capability, NodeRole, Stage};
 
-use super::draw::{node_id, placed, worst};
+use super::draw::{joined, node_id, placed};
 use super::{Origin, Pattern, Relation, TopologyLink, XMIP_OPERATE, XMIP_STORAGE, link_id};
 use crate::health::Health;
-use crate::snapshot::{HealthRecord, Snapshot};
+use crate::snapshot::{Beneath, HealthRecord, Snapshot};
 
 /// One member of a cluster as it is related and drawn: its name, an opaque
 /// id here, the roles it declares and — a Storage node `[storage] nodes`
@@ -93,13 +95,26 @@ pub fn listed(members: &[Member]) -> Vec<&Member> {
 
 /// Every relation between `members` of the cluster at `root`, configured,
 /// labelled by what `snapshot` holds beneath each node's stages and moody
-/// as its ends' reach and Storage records say.
+/// as its ends' reach and Storage records say: each member's searched once,
+/// in the snapshot's records ordered once ([`Beneath`]), and none where no
+/// member relates to another.
 #[must_use]
 pub fn relations(root: &str, members: &[Member], snapshot: &Snapshot) -> Vec<TopologyLink> {
+    let listed = listed(members);
+    let storing = !listed.is_empty();
+    if !storing && !members.iter().any(|member| operating(member).is_some()) {
+        return Vec::new();
+    }
+    let beneath = Beneath::of(snapshot);
     let relating = Relating {
-        root,
-        snapshot,
-        listed: listed(members),
+        known: members
+            .iter()
+            .map(|member| {
+                let known = Known::of(root, member, &beneath, storing);
+                (member.node.as_str(), known)
+            })
+            .collect(),
+        listed,
     };
     let mut links = Vec::new();
     if let Some(primary) = relating.listed.first() {
@@ -116,20 +131,29 @@ pub fn relations(root: &str, members: &[Member], snapshot: &Snapshot) -> Vec<Top
         }
     }
     for member in members {
-        let relation = match (
-            member.declares(NodeRole::Operational),
-            member.declares(NodeRole::Monitoring),
-        ) {
-            (true, true) => Relation::OperatesAndMonitors,
-            (true, false) => Relation::Operates,
-            (false, true) => Relation::Monitors,
-            (false, false) => continue,
+        let Some(relation) = operating(member) else {
+            continue;
         };
         for other in members.iter().filter(|other| other.node != member.node) {
             links.push(relating.operate(member, other, relation));
         }
     }
     links
+}
+
+/// How `member` relates to every other member over the operate listener,
+/// by the operational and monitoring roles it declares; none where it
+/// declares neither.
+fn operating(member: &Member) -> Option<Relation> {
+    match (
+        member.declares(NodeRole::Operational),
+        member.declares(NodeRole::Monitoring),
+    ) {
+        (true, true) => Some(Relation::OperatesAndMonitors),
+        (true, false) => Some(Relation::Operates),
+        (false, true) => Some(Relation::Monitors),
+        (false, false) => None,
+    }
 }
 
 /// Every pair of stages work is handed along between `members`: from each
@@ -159,12 +183,51 @@ pub fn handed(members: &[Member]) -> Vec<(String, Stage, String, Stage)> {
 
 /// What the relations are drawn from.
 struct Relating<'a> {
-    root: &'a str,
-    snapshot: &'a Snapshot,
     listed: Vec<&'a Member>,
+    /// What is known of each member, by its name.
+    known: BTreeMap<&'a str, Known<'a>>,
 }
 
-impl Relating<'_> {
+/// What a member's relations read of it, searched once.
+struct Known<'a> {
+    /// The worst of its `<node>/reached` and `<node>/storage`.
+    held: Option<&'a HealthRecord>,
+    /// What is placed on it, each stage it serves by its title; empty where
+    /// the cluster relates no node by Storage.
+    placed: String,
+}
+
+impl<'a> Known<'a> {
+    /// What `member` of the cluster at `root` is known by in `beneath`,
+    /// what is placed on it only where the cluster is `storing`.
+    fn of(root: &str, member: &Member, beneath: &Beneath<'a>, storing: bool) -> Self {
+        let scope = joined(&[root, "/node/", &member.node]);
+        let held = ["reached", "storage"]
+            .into_iter()
+            .filter_map(|leaf| beneath.worst(&joined(&[&scope, "/", leaf])))
+            .min_by(|a, b| a.standing().cmp(&b.standing()));
+        let mut said = String::new();
+        for stage in Stage::ALL
+            .into_iter()
+            .filter(|stage| storing && member.serves(*stage))
+        {
+            let beneath = placed(beneath, &scope, stage);
+            said.push_str("; ");
+            said.push_str(stage.title());
+            said.push_str(": ");
+            if beneath.is_empty() {
+                said.push_str("none placed");
+            }
+            for (at, one) in beneath.iter().enumerate() {
+                said.push_str(if at == 0 { "" } else { ", " });
+                said.push_str(one);
+            }
+        }
+        Self { held, placed: said }
+    }
+}
+
+impl<'a> Relating<'a> {
     /// A relation over Xmip Storage between `member` and `storage`, the
     /// configured primary — or, copied to, the standby `member`.
     fn storage(&self, member: &Member, primary: &Member, relation: Relation) -> TopologyLink {
@@ -189,25 +252,31 @@ impl Relating<'_> {
             ),
         };
         let placed = match relation {
-            Relation::CopiesTo => String::new(),
-            _ => self.placed(member),
+            Relation::CopiesTo => "",
+            _ => self
+                .known
+                .get(member.node.as_str())
+                .map_or("", |known| known.placed.as_str()),
         };
         let pattern = match relation {
             Relation::CopiesTo => Pattern::Streaming,
             _ => Pattern::PublishConsume,
         };
-        let said = format!(
-            "{} {} {}{placed}{asked}",
-            from.node,
+        let said = joined(&[
+            &from.node,
+            " ",
             relation.name(),
-            to.node
-        );
+            " ",
+            &to.node,
+            placed,
+            &asked,
+        ]);
         self.link((from, to), relation, (pattern, XMIP_STORAGE), said)
     }
 
     /// A relation over the operate listener from `member` to `other`.
     fn operate(&self, member: &Member, other: &Member, relation: Relation) -> TopologyLink {
-        let said = format!("{} {} {}", member.node, relation.name(), other.node);
+        let said = joined(&[&member.node, " ", relation.name(), " ", &other.node]);
         let ends = (member, other);
         self.link(
             ends,
@@ -229,7 +298,7 @@ impl Relating<'_> {
         let (state, evidence) = match self.worse(from, to) {
             Some(record) if record.health != Health::Fine => (
                 record.health,
-                format!("{said}; {}: {}", record.scope, record.evidence),
+                joined(&[&said, "; ", &record.scope, ": ", &record.evidence]),
             ),
             _ => (Health::Fine, said),
         };
@@ -253,34 +322,11 @@ impl Relating<'_> {
     }
 
     /// The worst of each end's `<node>/reached` and `<node>/storage`.
-    fn worse(&self, one: &Member, other: &Member) -> Option<HealthRecord> {
+    fn worse(&self, one: &Member, other: &Member) -> Option<&'a HealthRecord> {
         [one, other]
             .into_iter()
-            .flat_map(|member| {
-                ["reached", "storage"]
-                    .map(|leaf| format!("{}/node/{}/{leaf}", self.root, member.node))
-            })
-            .filter_map(|scope| worst(self.snapshot, &scope))
+            .filter_map(|member| self.known.get(member.node.as_str())?.held)
             .min_by(|a, b| a.standing().cmp(&b.standing()))
-    }
-
-    /// What is placed on `member`, each stage it serves by its title: the
-    /// Locations, Subscriptions or Ports beneath it, or none placed.
-    fn placed(&self, member: &Member) -> String {
-        let scope = format!("{}/node/{}", self.root, member.node);
-        Stage::ALL
-            .into_iter()
-            .filter(|stage| member.serves(*stage))
-            .map(|stage| {
-                let beneath: Vec<String> =
-                    placed(self.snapshot, &scope, stage).into_iter().collect();
-                if beneath.is_empty() {
-                    format!("; {}: none placed", stage.title())
-                } else {
-                    format!("; {}: {}", stage.title(), beneath.join(", "))
-                }
-            })
-            .collect()
     }
 }
 

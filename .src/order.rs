@@ -1,34 +1,21 @@
-//! An operator's act, and the order that carries it to a node a surface
-//! reaches through its publication only (ADR-0065, amendment 2026-09-29;
-//! ADR-0013, amendment 2026-09-30).
+//! An operator's act on what a node publishes (ADR-0065, amendment
+//! 2026-09-29; ADR-0013, amendment 2026-09-30), written here once: the
+//! acts and their words ([`Act`]), what they act on ([`Noun`]) and which acts
+//! each takes, and the one act asked of a node ([`Order`]).
 //!
 //! Four things an operator acts on are published by a node: its Event
 //! subscriptions, its Subscriptions, the Messages its Dead Message Queue
-//! keeps and the Messages it sends ([`Noun`]). The acts and their words are
-//! written here once ([`Act`]), with which acts each takes: an Event
-//! subscription is paused, resumed or removed; a Subscription is paused or
-//! resumed only, since it is added and removed in the TOML configuration; a
-//! Message in the Dead Message Queue is replayed (ADR-0052, amendment
-//! 2026-10-01); a Message that failed is retried or dismissed
-//! (`runtime-model.md` section 13).
+//! keeps and the Messages it sends ([`Noun`]). An Event subscription is
+//! paused, resumed or removed; a Subscription is paused or resumed only,
+//! since it is added and removed in the TOML configuration of the Xmip
+//! Application that draws it; a Message in the Dead Message Queue is
+//! replayed (ADR-0052, amendment 2026-10-01); a Message that failed is
+//! retried or dismissed (`runtime-model.md` section 13).
 //!
-//! A surface reading a live node applies an act through the runtime's
-//! library, in the node's own process. A surface reading a snapshot touches
-//! no node: the publication says where its publisher takes orders
-//! ([`crate::Publication::orders`]), the surface leaves one there, and the
-//! node, told by its operating system that the directory changed, takes it
-//! and applies it as any act is applied. The
-//! file, its place and its shape are written here once:
-//! `<orders>/<node name>/<unix nanos>-<sequence>-<act>.toml`, written whole
-//! beside itself and renamed into place, so a node never reads half of one.
-
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-use serde::{Deserialize, Serialize};
-
-use crate::scope::Scope;
+//! Every act reaches its node through Xmip Storage: the node a surface
+//! reaches admits it and writes it there, and the node it is asked of takes
+//! it (ADR-0014, amendment 2026-11-13). A snapshot is read and never acted
+//! on.
 
 /// What an operator does to what a node publishes.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -95,7 +82,7 @@ pub enum Noun {
 }
 
 impl Noun {
-    /// Every noun an order names.
+    /// Every noun an act names.
     pub const ALL: [Self; 4] = [
         Self::EventSubscription,
         Self::Subscription,
@@ -103,7 +90,7 @@ impl Noun {
         Self::Message,
     ];
 
-    /// The word an order names it by.
+    /// The word an act names it by.
     #[must_use]
     pub const fn word(self) -> &'static str {
         match self {
@@ -179,7 +166,7 @@ impl Noun {
     }
 }
 
-/// One act, on one thing a node publishes.
+/// One act, on one thing a node publishes, asked of that node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Order {
     /// The node that holds it: `xmip:///<cluster>/node/<name>`.
@@ -194,139 +181,9 @@ pub struct Order {
     pub who: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Document {
-    node: String,
-    noun: String,
-    target: String,
-    act: String,
-    who: String,
-}
-
-/// Orders left by this process in one nanosecond still sort apart.
-static SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-impl Order {
-    /// Leave this order in `orders` for its node to take; the file written.
-    ///
-    /// # Errors
-    /// REFUSED when the order names no node, or an act its noun does not
-    /// take; the reason when the file could not be written.
-    pub fn leave(&self, orders: &Path) -> Result<PathBuf, String> {
-        self.noun.act(self.act.word())?;
-        let place = Self::place(orders, &self.node)?;
-        fs::create_dir_all(&place).map_err(|error| failed(&place, &error))?;
-        let name = format!(
-            "{}-{:06}-{}.toml",
-            crate::now_unix_nanos(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed) % 1_000_000,
-            self.act.word()
-        );
-        let document = Document {
-            node: self.node.clone(),
-            noun: self.noun.word().to_string(),
-            target: self.target.clone(),
-            act: self.act.word().to_string(),
-            who: self.who.clone(),
-        };
-        let text = toml::to_string(&document).map_err(|error| error.to_string())?;
-        let part = place.join(format!("{name}.part"));
-        let file = place.join(name);
-        fs::write(&part, text).map_err(|error| failed(&part, &error))?;
-        fs::rename(&part, &file).map_err(|error| failed(&file, &error))?;
-        Ok(file)
-    }
-
-    /// Every order left in `orders` for the node at `node`, oldest first,
-    /// each file removed as it is taken. A file that is no order is removed
-    /// too, and said rather than applied.
-    #[must_use]
-    pub fn take(orders: &Path, node: &str) -> Vec<Result<Self, String>> {
-        let Ok(place) = Self::place(orders, node) else {
-            return Vec::new();
-        };
-        let Ok(entries) = fs::read_dir(&place) else {
-            return Vec::new();
-        };
-        let mut files: Vec<PathBuf> = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.extension()
-                    .is_some_and(|extension| extension == "toml")
-            })
-            .collect();
-        files.sort();
-
-        files
-            .into_iter()
-            .map(|file| {
-                let read = fs::read_to_string(&file);
-                let _ = fs::remove_file(&file);
-                read.map_err(|error| error.to_string())
-                    .and_then(|text| Self::read(&text))
-                    .map_err(|problem| format!("{}: {problem}", file.display()))
-            })
-            .collect()
-    }
-
-    fn read(text: &str) -> Result<Self, String> {
-        let document: Document = toml::from_str(text).map_err(|error| error.to_string())?;
-        let noun = Noun::named(&document.noun)
-            .ok_or_else(|| format!("REFUSED: '{}' is nothing an order names", document.noun))?;
-        let act = noun.act(&document.act)?;
-        Ok(Self {
-            node: document.node,
-            noun,
-            target: document.target,
-            act,
-            who: document.who,
-        })
-    }
-
-    /// Where the orders for the node at `node` lie: beneath `orders`, by
-    /// the node's name — the directory the node is told of a change in.
-    ///
-    /// # Errors
-    /// REFUSED when `node` names no node.
-    pub fn place(orders: &Path, node: &str) -> Result<PathBuf, String> {
-        Scope::new(node)
-            .node()
-            .filter(|name| !name.is_empty())
-            .map(|name| orders.join(name))
-            .ok_or_else(|| format!("REFUSED: '{node}' names no node"))
-    }
-}
-
-fn failed(path: &Path, error: &std::io::Error) -> String {
-    format!("could not write {}: {error}", path.display())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use configure::fixture::test_cluster;
-
-    fn orders(name: &str) -> PathBuf {
-        let at = std::env::temp_dir().join(format!("xmip-order-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&at);
-        at
-    }
-
-    /// The node an order is for: the test cluster's first.
-    fn node() -> String {
-        test_cluster().node_scope(0)
-    }
-
-    fn order(noun: Noun, target: &str, act: Act) -> Order {
-        Order {
-            node: node(),
-            noun,
-            target: target.to_string(),
-            act,
-            who: "ilian".to_string(),
-        }
-    }
 
     #[test]
     fn an_act_is_its_word_and_each_noun_takes_its_own() {
@@ -358,64 +215,5 @@ mod tests {
         );
         assert!(Noun::DeadMessage.act("retry").is_err());
         assert_eq!(Noun::named("message"), Some(Noun::Message));
-    }
-
-    #[test]
-    fn an_order_left_is_taken_once_by_its_node_and_by_no_other() {
-        let at = orders("once");
-        let pause = order(Noun::Subscription, "structured", Act::Pause);
-        let resume = order(Noun::EventSubscription, "3", Act::Resume);
-        pause.leave(&at).expect("left");
-        resume.leave(&at).expect("left");
-
-        assert_eq!(
-            Order::take(&at, &test_cluster().node_scope(1)),
-            [] as [Result<Order, String>; 0]
-        );
-        let taken: Vec<Order> = Order::take(&at, &node())
-            .into_iter()
-            .collect::<Result<_, _>>()
-            .expect("orders");
-        assert_eq!(taken, vec![pause, resume], "oldest first");
-        assert_eq!(Order::take(&at, &node()), [] as [Result<Order, String>; 0]);
-        let _ = fs::remove_dir_all(&at);
-    }
-
-    #[test]
-    fn no_remove_is_left_for_a_subscription_and_a_stranger_file_is_said() {
-        let at = orders("stranger");
-        let removed = order(Noun::Subscription, "structured", Act::Remove).leave(&at);
-        assert!(removed.is_err_and(|said| said.contains("TOML configuration")));
-
-        let cluster = test_cluster();
-        let place = at.join(&cluster.node(0).name);
-        fs::create_dir_all(&place).expect("made");
-        fs::write(
-            place.join("1-1-remove.toml"),
-            format!(
-                "node = \"{}\"\nnoun = \"subscription\"\ntarget = \"t\"\nact = \"remove\"\n\
-                 who = \"w\"\n",
-                node()
-            ),
-        )
-        .expect("written");
-        let taken = Order::take(&at, &node());
-        assert_eq!(taken.len(), 1);
-        assert!(
-            taken[0]
-                .as_ref()
-                .is_err_and(|said| said.contains("REFUSED"))
-        );
-
-        let nowhere = Order {
-            node: cluster.scope(),
-            ..order(Noun::EventSubscription, "1", Act::Remove)
-        };
-        assert!(
-            nowhere
-                .leave(&at)
-                .is_err_and(|error| error.contains("names no node"))
-        );
-        let _ = fs::remove_dir_all(&at);
     }
 }
