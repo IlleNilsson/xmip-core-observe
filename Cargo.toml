@@ -40,6 +40,8 @@ test = false
 configure = { package = "xmip-core-configure", git = "https://github.com/IlleNilsson/xmip-core-configure", branch = "main", features = ["test-support"] }
 # The one latency spread the estate's timing programs hold (`xcore::latency`).
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main", features = ["test-support"] }
+# A test's own temporary folder (`file::temporary`); for the tests only.
+file = { package = "xmip-core-library-file", git = "https://github.com/IlleNilsson/xmip-core-library-file", branch = "main", features = ["test-support"] }
 
 [profile.dev.package."*"]
 opt-level = 3

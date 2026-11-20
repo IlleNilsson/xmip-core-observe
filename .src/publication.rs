@@ -522,10 +522,8 @@ mod tests {
 
     #[test]
     fn a_publication_is_written_whole_and_reads_back() {
-        let path = std::env::temp_dir()
-            .join(format!("xmip-publication-{}", std::process::id()))
-            .join("snapshot.xmip");
-        std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+        let folder = file::temporary::Folder::new("observe-publication");
+        let path = folder.join("snapshot.xmip");
 
         let written = Publication::whole("n", &node(), &published());
         written.write(&path).expect("written");
@@ -536,11 +534,8 @@ mod tests {
             Publication::read(&text).map(|read| read.node),
             Ok(written.node.clone())
         );
-        let beside: Vec<_> = std::fs::read_dir(path.parent().expect("parent"))
-            .expect("listed")
-            .collect();
+        let beside: Vec<_> = std::fs::read_dir(&folder).expect("listed").collect();
         assert_eq!(beside.len(), 1, "no temporary file is left behind");
-        std::fs::remove_dir_all(path.parent().expect("parent")).ok();
     }
 
     #[test]
