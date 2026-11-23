@@ -4,13 +4,13 @@
 //!
 //! The model and its words are written here once. A publisher builds a
 //! [`Topology`] — drawn from what its nodes reported by [`draw`] and
-//! [`party`], the one drawing the Essentials' roll and a running node both
+//! [`party`], the one drawing the System Tests' roll and a running node both
 //! call, and related by role by [`relate`] wherever a cluster is drawn —
 //! and [`crate::publication`] writes and reads it; a surface gets it through
 //! the runtime's reader (`xmip_operate.h` section 8) as the header's values,
 //! never as the words, and where each thing stands from [`layout`], which
 //! the reader computes (`xmip_publication_layout_v1`). Until 2026-09-24 the
-//! Essentials held this model and `Xmip.Surface` parsed its words again
+//! System Tests held this model and `Xmip.Surface` parsed its words again
 //! (open problem 25). What a value is called — its word, and the name a
 //! person reads it by — is [`words`]', and a surface asks the runtime for it
 //! by value (`xmip_topology_kind_words_v1` and its siblings, section 8).

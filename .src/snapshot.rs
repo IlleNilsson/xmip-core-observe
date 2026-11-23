@@ -212,7 +212,7 @@ impl Snapshot {
     /// Queues, failed Messages and what its paused scopes looked like — each
     /// replacing what was here for the same key: what a reader that merges
     /// several publishers' snapshots into one view calls, and nothing writes
-    /// again. Until 2026-11-11 the Essentials' roll copied four of these and
+    /// again. Until 2026-11-11 the System Tests' roll copied four of these and
     /// dropped the rest, so the Dead Message Queue and the failed Messages
     /// never reached the board (ADR-0052, amendment 2026-11-11).
     pub fn merge(&mut self, from: &Self) {

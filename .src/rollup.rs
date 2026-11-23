@@ -1,10 +1,10 @@
 //! The cluster's rollup of its nodes (ADR-0027 decision 8): what no node
 //! can say about itself, said by whoever assembles the cluster's view from
-//! what each node published — the Essentials' cluster process and the
+//! what each node published — the System Tests' cluster process and the
 //! runtime's gatherer (`runtime::plane::gather`) call this one rule
 //! (ADR-0052, amendment 2026-11-13). The merge it reads is observe's,
 //! `Snapshot::merge`, every table of it. Until 2026-11-13 the rule was the
-//! Essentials' cluster process's own.
+//! System Tests' cluster process's own.
 
 use crate::health::Health;
 use crate::snapshot::{Beneath, HealthRecord, Snapshot};

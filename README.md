@@ -44,7 +44,7 @@ either end is its own (ADR-0052, amendments 2026-11-11); `merge_each`
 merges every node's drawing through one index, and `merge` is its
 one-drawing case. What no node can say of itself, the rollup at
 `<cluster>/node` — the worst leaf beneath every node, one point below it —
-is `rollup::nodes`, which the Essentials' cluster process and the runtime's
+is `rollup::nodes`, which the System Tests' cluster process and the runtime's
 gatherer (`runtime::plane::gather`) call alike (ADR-0052, amendment
 2026-11-13). A snapshot keeps each record by its scope and each count by
 its scope and what it counted, read from the record, never a copy of the
@@ -68,7 +68,7 @@ what moved; `topology::party` adds the Parties on each side a stage
 faces — where a publication cannot say which Parties a Location takes, one
 facing each node on each side, labelled *TX-Party 1, 2, …* sending in and
 *RX-Party 1, …* delivered to, numbered per side in the order the nodes
-stand — linked with what the stage counted. The Essentials' roll and a running node (the
+stand — linked with what the stage counted. The System Tests' roll and a running node (the
 runtime's `Running::publication`, which `xmip-service` writes) both draw
 through them, and each states its drawing over a window of its own.
 
@@ -144,7 +144,7 @@ forwards each to the surfaces over `xmip_operate.h` sections 7 and 8 — a
 publication and a curve are read by the runtime and handed over as the
 header's values —
 and `Xmip.Surface`, the PowerShell module and the GUI call those exports
-rather than keep a copy; the Essentials writes and reads its files through
+rather than keep a copy; the System Tests write and read their files through
 `Publication` (ADR-0052, amendments 2026-09-24).
 
 ## What an operator's own monitoring reads

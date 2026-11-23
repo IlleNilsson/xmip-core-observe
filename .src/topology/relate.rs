@@ -159,7 +159,7 @@ fn operating(member: &Member) -> Option<Relation> {
 /// Every pair of stages work is handed along between `members`: from each
 /// that receives to each that processes, and from each that processes to
 /// each that sends, in the order they are given — the rig's simulated
-/// hand-off (`test/core/essentials`, `handoff.rs`) and the one pairing.
+/// hand-off (`test/core/system-test`, `handoff.rs`) and the one pairing.
 #[must_use]
 pub fn handed(members: &[Member]) -> Vec<(String, Stage, String, Stage)> {
     [

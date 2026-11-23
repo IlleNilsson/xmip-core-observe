@@ -6,15 +6,15 @@
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
 //! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`, and a roll's `[run]` and
 //! `[topology]` — was written by the
-//! Essentials and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
+//! System Tests and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
-//! Essentials, `xmip-service` — writes through [`Publication::write`], the
-//! Essentials reads its nodes' files back through [`Publication::read`], and
+//! System Tests, `xmip-service` — writes through [`Publication::write`], the
+//! System Tests read their nodes' files back through [`Publication::read`], and
 //! a surface reads through the same function in the runtime's library
 //! (`xmip_publication_read_v1`, `xmip_operate.h` section 8).
 //!
 //! **Written whole or not at all** ([`write_atomic`]): a reader sees the
-//! previous file or the next, never a torn one. The Essentials wrote it so
+//! previous file or the next, never a torn one. The System Tests wrote it so
 //! alone until 2026-09-30, when `xmip-service` began to publish too
 //! (ADR-0018, amendment 2026-09-30).
 //!
@@ -271,7 +271,7 @@ impl Publication {
 /// and an activity file of the right length and nothing but zeros in them,
 /// and the prompt said unavailable for two days (2026-09-16). Every file a
 /// surface reads a publisher's state from is written this way — the
-/// publication, and the Essentials' history and activity beside it.
+/// publication, and the System Tests' history and activity beside it.
 ///
 /// # Errors
 ///
@@ -417,7 +417,7 @@ mod tests {
         let node = node();
         let mut summed = published();
         summed.record_count(count(&node, Counted::Bytes, 40));
-        let text = Publication::whole("essentials", &node, &summed).to_toml();
+        let text = Publication::whole("System Tests", &node, &summed).to_toml();
         assert!(text.contains("state = \"done\""), "{text}");
         assert!(text.contains("counted = \"streams\""), "{text}");
         assert!(!text.contains(&format!("scope = \"{node}\"")), "{text}");

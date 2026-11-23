@@ -36,7 +36,7 @@
 //! Message every few seconds read zero in most rounds and its movement came
 //! and went; and a node's activity was one while its System Process was
 //! alive, so every live node pulsed at the fastest rate whatever it carried.
-//! Written once, here: the Essentials' roll states it on the cluster it
+//! Written once, here: the System Tests' roll states it on the cluster it
 //! draws, and a running node on itself (the runtime's `Running::publication`,
 //! which `xmip-service` publishes every quarter of a second); a surface draws
 //! what was stated and computes no rate of its own.
@@ -61,7 +61,7 @@ const STEP: i64 = 1_000_000_000;
 
 /// What moves through a drawn thing: what each stage of the message path
 /// counts (`Counted::at`), on a stage (`Scope::stage`), never a gauge a test
-/// keeps beneath a node, as the Essentials' daily backlog's depth.
+/// keeps beneath a node, as the System Tests' daily backlog's depth.
 const THROUGH: [Counted; 3] = [Counted::Streams, Counted::Journeys, Counted::Messages];
 
 /// A publisher's readings of what it drew: the shape it last read a drawing
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn the_cluster_moves_with_its_nodes_and_never_with_a_test_run_at_the_cluster_itself() {
-        // The Essentials run scenarios in its own process beside the nodes,
+        // The System Tests run scenarios in their own process beside the nodes,
         // counted at `<root>/<test>`: the cluster's mood is read beneath its
         // nodes, and what moved through it is too.
         let in_process = |snapshot: &mut Snapshot, value: u64| {
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn a_gauge_a_test_keeps_beneath_a_node_never_moves_it_and_its_stages_do() {
-        // The Essentials' daily backlog counts its directory's depth as
+        // The System Tests' daily backlog counts its directory's depth as
         // Messages beneath the node, on no stage: it climbs with the queue
         // and falls as the queue drains, and never moved through the node.
         let mut window = Window::new();

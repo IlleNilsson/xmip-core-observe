@@ -6,7 +6,7 @@
 //! stage, and says which endpoint that was.
 //!
 //! Which Parties there are is the publisher's to say. Where its
-//! configuration names them ([`Party`], [`draw`]) — the Essentials'
+//! configuration names them ([`Party`], [`draw`]) — the System Tests'
 //! `[[parties]]`, each on its share of the transports (ADR-0028, amendment
 //! 2026-10-13) — each is drawn once for every side it is on, linked to each
 //! stage it faces. Where its publication cannot say which Parties a
