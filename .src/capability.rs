@@ -1,6 +1,7 @@
 //! Where a node publishes what it declares: one health record at
 //! `<node>/capability`, its evidence the declaration — its roles and its
-//! online capability (ADR-0056 clause 1, amendment 2026-10-01).
+//! Node capabilities (ADR-0056 clause 1, amendments 2026-10-01 and
+//! 2026-11-24).
 //!
 //! The declaration and its evidence are `node::Capability`'s; where it sits
 //! in the snapshot is the snapshot's, and is said here once. A publisher
@@ -87,7 +88,7 @@ mod tests {
         let cluster = test_cluster();
         let name = &cluster.node(0).name;
         let at = format!("{}/{name}/capability", cluster.scope());
-        let (node, said) = declared(&at, "declares relay; offline;").expect("one");
+        let (node, said) = declared(&at, "declares relay; no Node capability;").expect("one");
         assert_eq!(node, name.as_str());
         assert!(said.expect_err("refused").starts_with("REFUSED"));
     }

@@ -2,7 +2,7 @@
 //!
 //! The owner, 2026-09-19: the run says what it was started with. A surface
 //! showed a cluster and its leaves and nothing of which tests were named,
-//! which nodes, which of them online, or how hard — so a board could not be
+//! which nodes, what each declared, or how hard — so a board could not be
 //! told from the one before it. A publisher that runs tests says it; a node
 //! writes none, and a reader that finds no table shows nothing for it. The
 //! System Tests held this shape until 2026-09-24 and `Xmip.Surface` read it
@@ -28,9 +28,13 @@ pub struct Run {
     /// that declared no role (ADR-0056, amendment 2026-10-01).
     #[serde(default)]
     pub roles: Vec<String>,
-    /// The nodes among them that may assume the internet (ADR-0045).
+    /// The Node capabilities each node was started with, as
+    /// `node::Capability::declared_entry` writes them:
+    /// `<node>=online+erp-direct`, a node declaring none left out; `online`
+    /// among them where it may assume the internet (ADR-0045; ADR-0056,
+    /// amendment 2026-11-24).
     #[serde(default)]
-    pub online: Vec<String>,
+    pub capabilities: Vec<String>,
     /// The nodes among them that are real: each on a machine of its own,
     /// whose name resolved and which answered as that node, never spawned
     /// (ADR-0028, amendments 2026-09-19 and 2026-10-21). Every other node
@@ -67,7 +71,7 @@ pub enum RunList {
     Tests,
     Nodes,
     Roles,
-    Online,
+    Capabilities,
     Real,
 }
 
@@ -77,7 +81,7 @@ impl RunList {
         RunList::Tests,
         RunList::Nodes,
         RunList::Roles,
-        RunList::Online,
+        RunList::Capabilities,
         RunList::Real,
     ];
 }
@@ -97,7 +101,7 @@ impl Run {
             RunList::Tests => &self.tests,
             RunList::Nodes => &self.nodes,
             RunList::Roles => &self.roles,
-            RunList::Online => &self.online,
+            RunList::Capabilities => &self.capabilities,
             RunList::Real => &self.real,
         }
     }
