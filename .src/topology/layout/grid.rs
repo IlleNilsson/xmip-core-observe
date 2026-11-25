@@ -9,7 +9,7 @@ use node::{NodeRole, Stage};
 
 use super::{Band, Column, Place};
 use crate::topology::draw::label;
-use crate::topology::{NodeKind, TopologyNode};
+use crate::topology::{NodeKind, StorageStanding, TopologyNode};
 use beside::beside;
 use rows::Rows;
 use search::shifted;
@@ -41,11 +41,7 @@ pub(super) fn cluster(things: &[&TopologyNode], lines: &[(&str, &str)]) -> Vec<P
         .iter()
         .map(|thing| (*thing, roles(thing)))
         .collect();
-    let primary = declared
-        .iter()
-        .filter(|(_, roles)| roles.contains(&NodeRole::Storage))
-        .min_by(|(one, _), (other, _)| listed(one).cmp(&listed(other)))
-        .map(|(thing, _)| thing.id.as_str());
+    let primary = primary(&declared);
     let mut stood: Vec<(&TopologyNode, Band, Column, f64)> = declared
         .iter()
         .map(|(thing, roles)| {
@@ -150,9 +146,30 @@ fn listed(thing: &TopologyNode) -> (bool, Option<u32>, &[u8], &[u8]) {
     )
 }
 
+/// The Storage node standing on the path, of those `declared`: the one that
+/// reports itself the primary as it runs ([`TopologyNode::standing`]); where
+/// none does, the one `[storage] nodes` lists first; where none is listed,
+/// the first drawn, as the cluster declares them. Never by a name: until
+/// 2026-11-25 the first by its scope's bytes stood there where no place was
+/// said (the owner, 2026-11-25: *Also the DS2 standby node is not shown*).
+fn primary<'a>(declared: &[(&'a TopologyNode, Vec<NodeRole>)]) -> Option<&'a str> {
+    let storing = || {
+        declared
+            .iter()
+            .filter(|(_, roles)| roles.contains(&NodeRole::Storage))
+            .map(|(thing, _)| *thing)
+    };
+    let by_place = |thing: &&TopologyNode| (thing.place.is_none(), thing.place);
+    storing()
+        .filter(|thing| thing.standing == Some(StorageStanding::Primary))
+        .min_by_key(by_place)
+        .or_else(|| storing().min_by_key(by_place))
+        .map(|thing| thing.id.as_str())
+}
+
 /// The band, the column and where across a node declaring `roles` stands —
 /// storage, then the stage roles, then the rest — `first` where it is the
-/// first-listed Storage node.
+/// Storage node standing on the path.
 pub(super) fn by_roles(roles: &[NodeRole], first: bool) -> (Band, Column, f64) {
     if roles.contains(&NodeRole::Storage) {
         return if first {

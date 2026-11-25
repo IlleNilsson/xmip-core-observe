@@ -206,6 +206,7 @@ pub fn cluster(beneath: &Beneath<'_>, root: &str) -> TopologyNode {
         evidence,
         roles: String::new(),
         place: None,
+        standing: None,
     }
 }
 
@@ -228,6 +229,7 @@ pub fn node(beneath: &Beneath<'_>, name: &str, scope: String) -> TopologyNode {
         evidence,
         roles: String::new(),
         place: None,
+        standing: None,
     }
 }
 
@@ -340,6 +342,7 @@ fn part(
         evidence,
         roles: String::new(),
         place: None,
+        standing: None,
     }
 }
 

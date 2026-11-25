@@ -633,6 +633,7 @@ mod tests {
             evidence: String::new(),
             roles: String::new(),
             place: None,
+            standing: None,
         };
         let mut window = Window::new();
         for (second, carried) in [(0, 0), (2, 8)] {

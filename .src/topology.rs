@@ -27,7 +27,7 @@ pub mod relate;
 pub mod window;
 pub mod words;
 
-pub use words::{NodeKind, Origin, Pattern, Relation};
+pub use words::{NodeKind, Origin, Pattern, Relation, StorageStanding};
 
 /// What a link between two nodes runs over: the one way a node hands work
 /// on to another, through a Storage node (`terminology.md`, Xmip Storage).
@@ -219,7 +219,7 @@ impl TopologyNode {
     /// merges a node's own thing: all of it but its mood where this one's
     /// is worse, which keeps its evidence, its roles where it said none, and
     /// its place where it said none — the text written into what this one
-    /// holds rather than copied anew.
+    /// holds rather than copied anew. Its standing is the node's alone.
     fn taken_from(&mut self, drawn: &Self) {
         let Self {
             id,
@@ -234,6 +234,7 @@ impl TopologyNode {
             evidence,
             roles,
             place,
+            standing,
         } = drawn;
         self.id.clone_from(id);
         self.parent.clone_from(parent);
@@ -251,6 +252,7 @@ impl TopologyNode {
             self.roles.clone_from(roles);
         }
         self.place = place.or(self.place);
+        self.standing = *standing;
     }
 }
 
@@ -299,7 +301,9 @@ impl TopologyLink {
 /// them, and — a Storage node listed in `[storage] nodes` — its `place` in
 /// that list, from zero: what it is related by ([`relate`]), stands by
 /// ([`layout`]) and is for (`node::NodeRole::purpose`), never its name
-/// (ADR-0052 and ADR-0056, amendments 2026-11-13).
+/// (ADR-0052 and ADR-0056, amendments 2026-11-13). A Storage node of
+/// several says its `standing` as it reports itself running — the primary
+/// or a standby — drawn by the node alone (amendment 2026-11-25).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TopologyNode {
     #[serde(default)]
@@ -326,6 +330,8 @@ pub struct TopologyNode {
     pub roles: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standing: Option<StorageStanding>,
 }
 
 /// One communication relationship, `from` one node id `to` another, and how

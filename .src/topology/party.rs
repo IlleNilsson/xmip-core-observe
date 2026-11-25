@@ -352,6 +352,7 @@ impl Drawing<'_> {
             evidence,
             roles: String::new(),
             place: None,
+            standing: None,
         }
     }
 }

@@ -9,7 +9,9 @@ use crate::snapshot::{HealthRecord, Snapshot};
 use crate::topology::draw::{CLUSTER, members};
 use crate::topology::party::{self, Party};
 use crate::topology::relate::{Member, relations};
-use crate::topology::{Origin, Pattern, Relation, Topology, TopologyLink, link_id};
+use crate::topology::{
+    Origin, Pattern, Relation, StorageStanding, Topology, TopologyLink, link_id,
+};
 
 fn root() -> String {
     test_cluster().scope()
@@ -217,6 +219,57 @@ fn swapped_roles_swap_places_and_the_listed_order_stacks_storage() {
         };
         assert_eq!(now, expected, "{}", member.node);
     }
+}
+
+/// The owner, 2026-11-25: *Also the DS2 standby node is not shown*. The
+/// Storage node standing on the path is the one reporting itself the
+/// primary as it runs, whatever its place and its name; where none reports,
+/// the one listed first; where none is listed, the first the cluster
+/// declares — never the first by its name (ADR-0052, amendment 2026-11-25).
+#[test]
+fn the_storage_node_reporting_itself_the_primary_stands_on_the_path_never_one_by_its_name() {
+    let of = cluster(&same(), false);
+    let storing: Vec<String> = of
+        .iter()
+        .filter(|member| member.declares(NodeRole::Storage))
+        .map(|member| format!("node/{}", member.node))
+        .collect();
+    let [first, second, ..] = storing.as_slice() else {
+        panic!("the test cluster lists two Storage nodes: {storing:?}");
+    };
+    let bands = |topology: &Topology| {
+        let places = stands(topology);
+        (places[first].band, places[second].band)
+    };
+    assert_eq!(
+        bands(&drawn(&of, 0)),
+        (Band::Path, Band::Standby),
+        "listed first"
+    );
+
+    // The one listed second reports itself the primary, after a switchover.
+    let mut switched = drawn(&of, 0);
+    for node in &mut switched.nodes {
+        node.standing = match &node.id {
+            id if id == second => Some(StorageStanding::Primary),
+            id if id == first => Some(StorageStanding::Standby),
+            _ => None,
+        };
+    }
+    assert_eq!(bands(&switched), (Band::Standby, Band::Path), "reported");
+
+    // None listed and none reporting: the first the cluster declares, here
+    // the second by its name.
+    let unlisted: Vec<Member> = of
+        .iter()
+        .rev()
+        .map(|member| Member::new(&member.node, &member.roles, None))
+        .collect();
+    assert_eq!(
+        bands(&drawn(&unlisted, 0)),
+        (Band::Standby, Band::Path),
+        "declared"
+    );
 }
 
 /// The map stands still while the pulses move: the same drawing with

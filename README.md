@@ -84,8 +84,11 @@ traffic observed over it merge into one line, configured and observed
 (`Origin::joined`). Where each thing stands on the map is
 `topology::layout`, computed by the reader (`xmip_publication_layout_v1`):
 TX-Parties, receiving, Storage, sending, RX-Parties left to right, the
-operation band on top, processing over Storage, standbys below the first
-listed, executing in a lane of its own; never by traffic, never by a name.
+operation band on top, processing over Storage, the primary on the path —
+the Storage node reporting itself the primary as it runs
+(`StorageStanding`), else
+the first listed, else the first declared — and standbys below it,
+executing in a lane of its own; never by traffic, never by a name.
 Its tests hold a renamed cluster to the same bands and columns, swapped
 roles to swapped places, and every line clear of the things it does not
 join. A node's throughput over time is `Curve`, the history file, and the
@@ -128,12 +131,6 @@ section 13, built 2026-10-04).
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4):
 the snapshot and the activity log answer at and beneath a scope by
 `xmip-core-node`'s one rule, `node::Scope::contains`.
-
-Whether something a run made is shown is `run::shown`: always where the run
-declared nothing, and where `Run::hidden` says it declared itself hidden only
-when the reader asks to include what is hidden. The audit capability's query
-applies it to records, and the runtime forwards it as `xmip_run_shown_v1` for
-every other surface (ADR-0028, amendment 2026-09-30).
 
 A record is stamped by `observe::now_unix_nanos`: the estate's one clock,
 `xcore::SystemClock`, in the unit a record and `xmip_operate.h` carry —

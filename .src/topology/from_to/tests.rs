@@ -73,6 +73,7 @@ fn path() -> (Snapshot, Topology, [String; 3]) {
         evidence: String::new(),
         roles: String::new(),
         place: None,
+        standing: None,
     };
     let topology = Topology {
         nodes: vec![party(&into, "TX-Party 1"), party(&out, "RX-Party 1")],

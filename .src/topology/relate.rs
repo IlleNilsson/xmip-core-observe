@@ -78,18 +78,16 @@ impl Member {
 }
 
 /// The members declaring storage, in the order `[storage] nodes` lists
-/// them, the configured primary first; one listed nowhere after them all.
+/// them, the configured primary first; one listed nowhere after them all,
+/// in the order the members are given — the order the cluster declares
+/// them — and never by a name (ADR-0052, amendment 2026-11-25).
 #[must_use]
 pub fn listed(members: &[Member]) -> Vec<&Member> {
     let mut storing: Vec<&Member> = members
         .iter()
         .filter(|member| member.declares(NodeRole::Storage))
         .collect();
-    storing.sort_by(|one, other| {
-        (one.storage_place.is_none(), one.storage_place)
-            .cmp(&(other.storage_place.is_none(), other.storage_place))
-            .then_with(|| one.node.as_bytes().cmp(other.node.as_bytes()))
-    });
+    storing.sort_by_key(|member| (member.storage_place.is_none(), member.storage_place));
     storing
 }
 

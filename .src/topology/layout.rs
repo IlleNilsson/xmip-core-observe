@@ -8,15 +8,18 @@
 //!                  TX-Party   receiving    Storage      sending   RX-Party
 //! operation band                  OP (operational, monitoring, none)
 //! processing band                       PX  PX
-//! path rows        TX-Party 1   RX1     DS1 (first listed)   TX1   RX-Party 1
+//! path rows        TX-Party 1   RX1     DS1 (the primary)    TX1   RX-Party 1
 //!                  TX-Party 2   RX2                          TX2   RX-Party 2
-//! standby rows                             DS2 (later listed)
+//! standby rows                             DS2 (a standby)
 //! executing lane   (its Parties from the left)  EX  (to the right)
 //! ```
 //!
 //! Storage first, then the stage roles, then the operation roles: a node
-//! declaring storage stands in the Storage column, the first listed on the
-//! path row and the others below it, half a column toward the sending side;
+//! declaring storage stands in the Storage column, the primary on the path
+//! row — the one reporting itself the primary as it runs, else the first
+//! `[storage] nodes` lists, else the first the cluster declares, never by a
+//! name (amendment 2026-11-25) — and the others below it, half a column
+//! toward the sending side;
 //! one serving receive alone or send alone on the path row; processing alone
 //! over Storage; executing, or two stage roles, in a lane of its own below,
 //! at the mean of its stages' columns; anything else in the operation band

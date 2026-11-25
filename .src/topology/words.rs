@@ -205,6 +205,29 @@ worded!(Relation, Traffic, {
     Traffic => "traffic" as "traffic",
 });
 
+/// Where a Storage node of several stands among them, as it reports itself
+/// while it runs (`persist`'s election; ADR-0056, amendment 2026-10-22):
+/// what its drawn node says beneath its label, and what stands it on the
+/// path or below it ([`super::layout`]), never its name or its place in a
+/// sort (the owner, 2026-11-25: *Also the DS2 standby node is not shown*;
+/// ADR-0052, amendment 2026-11-25). A word no standing is called reads as
+/// finding: neither the primary nor a standby it is known to be.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageStanding {
+    /// Finding its primary among the Storage nodes listed.
+    Finding,
+    /// The primary: the one every other node writes into.
+    Primary,
+    /// A standby of the primary, copied to.
+    Standby,
+}
+
+worded!(StorageStanding, Finding, {
+    Finding => "finding" as "Storage, finding",
+    Primary => "primary" as "Storage, primary",
+    Standby => "standby" as "Storage, standby",
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +246,12 @@ mod tests {
         for relation in Relation::ALL {
             assert_eq!(Relation::named(relation.word()), Some(*relation));
         }
+        for standing in StorageStanding::ALL {
+            assert_eq!(StorageStanding::named(standing.word()), Some(*standing));
+            assert!(standing.name().starts_with("Storage, "), "{standing:?}");
+        }
+        assert_eq!(StorageStanding::Standby.name(), "Storage, standby");
+        assert_eq!(StorageStanding::default(), StorageStanding::Finding);
         assert_eq!(NodeKind::VirtualMachine.word(), "virtual-machine");
         assert_eq!(NodeKind::VirtualMachine.name(), "virtual machine");
         assert_eq!(Origin::Both.name(), "configured and observed");

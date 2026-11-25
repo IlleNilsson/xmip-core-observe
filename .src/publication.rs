@@ -564,6 +564,7 @@ mod tests {
                 evidence: String::new(),
                 roles: String::new(),
                 place: None,
+                standing: None,
             }],
             links: Vec::new(),
         };

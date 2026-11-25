@@ -15,6 +15,7 @@ fn drawn(id: &str, label: &str) -> TopologyNode {
         evidence: String::new(),
         roles: String::new(),
         place: None,
+        standing: None,
     }
 }
 
@@ -69,7 +70,10 @@ fn a_nodes_own_drawing_wins_for_what_it_owns_but_a_worse_mood_and_its_links_join
     let storage = Topology {
         nodes: vec![
             drawn("cluster", "the node's"),
-            drawn(&storing, "its own"),
+            TopologyNode {
+                standing: Some(StorageStanding::Standby),
+                ..drawn(&storing, "its own")
+            },
             drawn(&receiving, "drawn by another"),
         ],
         links: vec![linked(&receiving, &storing, 7)],
@@ -101,6 +105,11 @@ fn a_nodes_own_drawing_wins_for_what_it_owns_but_a_worse_mood_and_its_links_join
         found(&storing).place,
         Some(1),
         "a place the node did not say stays the configured one"
+    );
+    assert_eq!(
+        found(&storing).standing,
+        Some(StorageStanding::Standby),
+        "where a Storage node stands is what it says of itself (amendment 2026-11-25)"
     );
     assert_eq!(
         found(&receiving).label,
@@ -180,6 +189,7 @@ fn a_node_crosses_toml_by_its_words() {
         evidence: String::new(),
         roles: "operational,monitoring".to_string(),
         place: Some(0),
+        standing: Some(StorageStanding::Standby),
     };
     let text = toml::to_string(&node).expect("writes");
     assert!(text.contains("kind = \"node\""), "{text}");
@@ -190,6 +200,7 @@ fn a_node_crosses_toml_by_its_words() {
         "{text}"
     );
     assert!(text.contains("place = 0"), "{text}");
+    assert!(text.contains("standing = \"standby\""), "{text}");
     assert_eq!(toml::from_str::<TopologyNode>(&text), Ok(node));
 
     let strange: TopologyNode =
@@ -198,6 +209,10 @@ fn a_node_crosses_toml_by_its_words() {
     assert_eq!(strange.state, Health::Stressed);
     assert_eq!(strange.origin, Origin::Both);
     assert_eq!((strange.roles.as_str(), strange.place), ("", None));
+    assert_eq!(
+        strange.standing, None,
+        "a node that says no standing has none"
+    );
     let link: TopologyLink = toml::from_str("relation = \"befriends\"").expect("reads");
     assert_eq!(
         link.relation,
