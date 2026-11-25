@@ -35,15 +35,22 @@ pub struct Run {
     /// amendment 2026-11-24).
     #[serde(default)]
     pub capabilities: Vec<String>,
-    /// The nodes among them that are real: each on a machine of its own,
-    /// whose name resolved and which answered as that node, never spawned
-    /// (ADR-0028, amendments 2026-09-19 and 2026-10-21). Every other node
-    /// of `nodes` is simulated, a process the run spawned.
+    /// The nodes among them that are real: each read where it answered, on
+    /// a virtual machine of its own or started as `xmip-service`, never
+    /// simulated (ADR-0028, amendments 2026-09-19, 2026-10-21 and
+    /// 2026-11-25). Every other node of `nodes` is simulated, a process the
+    /// run spawned.
     #[serde(default)]
     pub real: Vec<String>,
     /// The stress level's name.
     #[serde(default)]
     pub stress: String,
+    /// What the run runs as, in the words of `Start-XmipTest`'s switches:
+    /// `Process`, as local processes, or `VirtualMachine`, on the virtual
+    /// machines its environment was deployed on (ADR-0028, amendment
+    /// 2026-11-25); empty where a publisher says neither.
+    #[serde(default)]
+    pub runs_as: String,
 }
 
 /// The five lists of a run, as the header numbers them for a reader that
