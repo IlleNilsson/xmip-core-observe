@@ -32,6 +32,7 @@ pub mod snapshot;
 pub mod subscription;
 pub mod topology;
 pub mod unheard;
+pub mod work_process_instance;
 
 pub use activity::{Activity, DEFAULT_ITEM_CAPACITY, Item, ItemKind};
 pub use counted::Counted;
@@ -51,6 +52,7 @@ pub use snapshot::{Count, HealthRecord, Snapshot};
 pub use subscription::Subscription;
 pub use topology::{NodeKind, Origin, Pattern, Relation, Topology, TopologyLink, TopologyNode};
 pub use unheard::Unheard;
+pub use work_process_instance::{InstanceHandled, WorkProcessInstance, WorkProcessInstances};
 
 use xcore::{Clock, SystemClock};
 

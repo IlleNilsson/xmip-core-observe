@@ -4,7 +4,8 @@
 //! A publisher and its readers are separate processes, and the bridge
 //! between them is a file. Its shape — `source`, `node`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
-//! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`, and a roll's `[run]` and
+//! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`,
+//! `[[work_process_instances]]`, and a roll's `[run]` and
 //! `[topology]` — was written by the
 //! System Tests and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
@@ -42,6 +43,7 @@ use crate::snapshot::{Count, HealthRecord, Snapshot};
 use crate::subscription::{Subscription, SubscriptionDocument};
 use crate::topology::Topology;
 use crate::unheard::{Unheard, UnheardDocument};
+use crate::work_process_instance::WorkProcessInstances;
 
 /// One publication, read or about to be written.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -66,6 +68,9 @@ pub struct Publication {
     /// The Messages that failed at the Send Ports of the nodes beneath
     /// `node`: how many at each, and the oldest.
     pub failed_messages: Vec<FailedMessages>,
+    /// The Instances of each Work Process the nodes beneath `node` run: the
+    /// newest of each, and the Messages that failed in its queue.
+    pub work_process_instances: Vec<WorkProcessInstances>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -91,6 +96,7 @@ impl Publication {
             unheard: snapshot.unheard().cloned().collect(),
             dead_messages: snapshot.dead_messages().cloned().collect(),
             failed_messages: snapshot.failed_messages().cloned().collect(),
+            work_process_instances: snapshot.work_process_instances().cloned().collect(),
             run: None,
             topology: None,
         }
@@ -144,6 +150,7 @@ impl Publication {
             unheard: self.unheard.iter().map(UnheardDocument::of).collect(),
             dead_messages: self.dead_messages.clone(),
             failed_messages: self.failed_messages.clone(),
+            work_process_instances: self.work_process_instances.clone(),
             run: self.run.clone(),
             topology: self.topology.clone(),
         };
@@ -228,6 +235,7 @@ impl Publication {
                 .collect(),
             dead_messages: document.dead_messages,
             failed_messages: document.failed_messages,
+            work_process_instances: document.work_process_instances,
             run: document.run,
             topology,
         })
@@ -258,6 +266,9 @@ impl Publication {
         }
         for failed in &self.failed_messages {
             snapshot.record_failed_messages(failed.clone());
+        }
+        for instances in &self.work_process_instances {
+            snapshot.record_work_process_instances(instances.clone());
         }
         snapshot
     }
@@ -315,6 +326,8 @@ struct Document {
     dead_messages: Vec<DeadMessage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     failed_messages: Vec<FailedMessages>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    work_process_instances: Vec<WorkProcessInstances>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

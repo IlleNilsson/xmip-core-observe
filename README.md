@@ -117,7 +117,15 @@ with why — apart from the last that failed there since the node started,
 which is history (`FailedMessages`: node, Send Port, `count`, `blocked`, each
 `FailedMessage`'s identifier, place and reason, and `last_failure`;
 `runtime-model.md` section 13), kept by node and Port
-(`Snapshot::record_failed_messages`), as `[[failed_messages]]`. A snapshot
+(`Snapshot::record_failed_messages`), as `[[failed_messages]]`; and, for
+every Work Process a node runs, its newest Instances — each running,
+waiting, failed, dismissed or completed, what it waits for and until when,
+its Correlation keys, its code, why and the Journey that failed it, its own
+values and its history of Messages — and the Messages that failed in its
+queue (`WorkProcessInstances`, `WorkProcessInstance`, `InstanceHandled`;
+`runtime-model.md` section 22; ADR-0066, amendment 2026-11-25), kept by node
+and Work Process (`Snapshot::record_work_process_instances`), as
+`[[work_process_instances]]`. A snapshot
 is read and never acted on: an operator's act on any of them is asked at a
 node's door and reaches its node through Xmip Storage (ADR-0014, amendment
 2026-11-13). `Order` is one act asked of one node, `Act` names pause, resume,
@@ -126,7 +134,8 @@ Event subscription pause, resume and remove, a Subscription pause and resume
 only, since it is added and removed in the TOML configuration, a Message in
 the Dead Message Queue (`dead-message`) replay only, and a Message that
 failed (`message`, by its Journey's identifier) retry and dismiss (`runtime-model.md`
-section 13, built 2026-10-04).
+section 13, built 2026-10-04), at a Send Port or a Work Process alike
+(ADR-0066, amendment 2026-11-25).
 
 A scope is an Xmip URI, and the tree is its path (ADR-0027 clauses 3 and 4):
 the snapshot and the activity log answer at and beneath a scope by

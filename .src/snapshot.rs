@@ -26,6 +26,7 @@ use crate::failed_message::FailedMessages;
 use crate::health::{Health, Standing};
 use crate::subscription::Subscription;
 use crate::unheard::Unheard;
+use crate::work_process_instance::WorkProcessInstances;
 use node::Scope;
 
 /// The severity a paused scope publishes. A category, not a measurement: a
@@ -95,6 +96,8 @@ pub struct Snapshot {
     /// The Messages that failed at each node's Send Port, by node and Port
     /// (`runtime-model.md` section 13).
     failed_messages: BTreeMap<(String, String), FailedMessages>,
+    /// Each node's Work Processes' Instances, by node and Work Process.
+    work_process_instances: BTreeMap<(String, String), WorkProcessInstances>,
 }
 
 impl Snapshot {
@@ -207,6 +210,18 @@ impl Snapshot {
         self.failed_messages.values()
     }
 
+    /// Record the Instances of one Work Process a node runs. Replaces what
+    /// was there for that node and Work Process.
+    pub fn record_work_process_instances(&mut self, instances: WorkProcessInstances) {
+        let key = (instances.node.clone(), instances.work_process.clone());
+        self.work_process_instances.insert(key, instances);
+    }
+
+    /// Every node's Work Processes' Instances, by node and Work Process.
+    pub fn work_process_instances(&self) -> impl Iterator<Item = &WorkProcessInstances> {
+        self.work_process_instances.values()
+    }
+
     /// Copy every table of `from` into this snapshot — its health, counts,
     /// Event subscriptions, Subscriptions, unheard members, Dead Message
     /// Queues, failed Messages and what its paused scopes looked like — each
@@ -241,6 +256,9 @@ impl Snapshot {
         }
         for failed in from.failed_messages.values() {
             self.record_failed_messages(failed.clone());
+        }
+        for instances in from.work_process_instances.values() {
+            self.record_work_process_instances(instances.clone());
         }
     }
 
@@ -553,6 +571,11 @@ mod tests {
             count: 2,
             ..FailedMessages::default()
         });
+        from.record_work_process_instances(crate::WorkProcessInstances {
+            node: node.clone(),
+            work_process: "Order in parts".into(),
+            ..crate::WorkProcessInstances::default()
+        });
         from.record_unheard(Unheard {
             by: node.clone(),
             node: "elsewhere".into(),
@@ -569,6 +592,7 @@ mod tests {
 
         assert_eq!(into.dead_messages().count(), 1, "the Dead Message Queue");
         assert_eq!(into.failed_messages().count(), 1, "the failed Messages");
+        assert_eq!(into.work_process_instances().count(), 1, "the Instances");
         assert_eq!(into.unheard().count(), 1, "what a node does not hear");
         assert_eq!(into.subscriptions().count(), 1);
         assert_eq!(
