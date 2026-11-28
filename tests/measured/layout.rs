@@ -49,8 +49,15 @@ fn timed(what: &str, topology: &Topology, placed: usize) {
 fn every_focus_of_a_cluster_sized_publication_is_laid_out_within_a_millisecond() {
     let cluster = configure::fixture::test_cluster();
     let root = cluster.scope();
+    let every = cluster.nodes.len();
     let named: Vec<Member> = (1..DRAWN)
-        .map(|at| Member::new(&format!("{}-{at}", cluster.node(at % 9).name), &[], None))
+        .map(|at| {
+            Member::new(
+                &format!("{}-{at}", cluster.node(at % every).name),
+                &[],
+                None,
+            )
+        })
         .collect();
     let topology = Topology {
         nodes: members(&Snapshot::new(), &root, &named),
@@ -89,7 +96,7 @@ fn a_cluster_related_by_role_drawing_as_many_things_is_laid_out_within_a_millise
         Member::new("storing-1", &[NodeRole::Storage], Some(1)),
     ];
     named.extend((3..52).map(|at| {
-        let base = &cluster.node(at % 9).name;
+        let base = &cluster.node(at % cluster.nodes.len()).name;
         Member::new(&format!("{base}-{at}"), &[roles[at % 4]], None)
     }));
     let mut snapshot = Snapshot::new();
