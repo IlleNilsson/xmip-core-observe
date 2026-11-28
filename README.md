@@ -20,8 +20,10 @@ and the kind each stage of the message path counts (`at`).
 A publication is a snapshot as the file a surface reads: `Publication`
 writes it (`whole`: every count at the scope it was recorded at, so a
 reader sums what is beneath any scope — a roll's file and a node's alike) and reads
-it back, with the records, the counts, what the run was started with (`Run`)
-and the communication topology (`topology`: its nodes, links and their
+it back, with the records, the counts, how its cluster is named for a person
+(`Naming`, under `[cluster]`: the short name the cluster's file declares and
+the file, where the publisher knows it; ADR-0028, amendment 2026-11-28),
+what the run was started with (`Run`) and the communication topology (`topology`: its nodes, links and their
 words, each value's `word` and the `name` a person reads it by). What moved
 is `topology::window::Window`'s, which the publisher keeps and no surface
 computes: over its earlier readings of the last thirty seconds it states on

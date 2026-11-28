@@ -5,8 +5,8 @@
 //! between them is a file. Its shape — `source`, `node`,
 //! `[[records]]`, `[[counts]]`, `[[subscriptions]]`, `[[event_subscriptions]]`,
 //! `[[unheard]]`, `[[dead_messages]]`, `[[failed_messages]]`,
-//! `[[work_process_instances]]`, and a roll's `[run]` and
-//! `[topology]` — was written by the
+//! `[[work_process_instances]]`, how its cluster is named, `[cluster]`, and
+//! a roll's `[run]` and `[topology]` — was written by the
 //! System Tests and parsed again by `Xmip.Surface`'s `SnapshotOperator` until
 //! 2026-09-24 (open problem 25). It has one home now: a publisher — the
 //! System Tests, `xmip-service` — writes through [`Publication::write`], the
@@ -38,6 +38,7 @@ use crate::dead_message::DeadMessage;
 use crate::event_subscription::{EventSubscription, EventSubscriptionDocument};
 use crate::failed_message::FailedMessages;
 use crate::health::Health;
+use crate::naming::Naming;
 use crate::run::Run;
 use crate::snapshot::{Count, HealthRecord, Snapshot};
 use crate::subscription::{Subscription, SubscriptionDocument};
@@ -71,6 +72,8 @@ pub struct Publication {
     /// The Instances of each Work Process the nodes beneath `node` run: the
     /// newest of each, and the Messages that failed in its queue.
     pub work_process_instances: Vec<WorkProcessInstances>,
+    /// How its cluster is named for a person, when the publisher says.
+    pub naming: Option<Naming>,
     /// What the run was started with, when the publisher says.
     pub run: Option<Run>,
     /// The communication topology, when the publisher draws one.
@@ -97,9 +100,18 @@ impl Publication {
             dead_messages: snapshot.dead_messages().cloned().collect(),
             failed_messages: snapshot.failed_messages().cloned().collect(),
             work_process_instances: snapshot.work_process_instances().cloned().collect(),
+            naming: None,
             run: None,
             topology: None,
         }
+    }
+
+    /// The same publication saying how its cluster is named; none where
+    /// `naming` says nothing.
+    #[must_use]
+    pub fn with_naming(mut self, naming: Option<Naming>) -> Self {
+        self.naming = naming.filter(Naming::said);
+        self
     }
 
     /// The same publication saying what its run was started with.
@@ -151,6 +163,7 @@ impl Publication {
             dead_messages: self.dead_messages.clone(),
             failed_messages: self.failed_messages.clone(),
             work_process_instances: self.work_process_instances.clone(),
+            cluster: self.naming.clone(),
             run: self.run.clone(),
             topology: self.topology.clone(),
         };
@@ -236,6 +249,7 @@ impl Publication {
             dead_messages: document.dead_messages,
             failed_messages: document.failed_messages,
             work_process_instances: document.work_process_instances,
+            naming: document.cluster.filter(Naming::said),
             run: document.run,
             topology,
         })
@@ -328,6 +342,8 @@ struct Document {
     failed_messages: Vec<FailedMessages>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     work_process_instances: Vec<WorkProcessInstances>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cluster: Option<Naming>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     run: Option<Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -549,6 +565,32 @@ mod tests {
         );
         let beside: Vec<_> = std::fs::read_dir(&folder).expect("listed").collect();
         assert_eq!(beside.len(), 1, "no temporary file is left behind");
+    }
+
+    #[test]
+    fn how_the_cluster_is_named_rides_along_and_saying_nothing_writes_nothing() {
+        let cluster = test_cluster();
+        let naming = Naming {
+            short_name: "Ab".to_string(),
+            file: "configuration/a.xmip".to_string(),
+        };
+        let text = Publication::whole("roll", &cluster.scope(), &Snapshot::new())
+            .with_naming(Some(naming.clone()))
+            .to_toml();
+        assert!(
+            text.contains("[cluster]") && text.contains("short_name = \"Ab\""),
+            "{text}"
+        );
+        assert_eq!(
+            Publication::read(&text).expect("reads").naming,
+            Some(naming)
+        );
+
+        let silent = Publication::whole("n", &node(), &Snapshot::new())
+            .with_naming(Some(Naming::default()))
+            .to_toml();
+        assert!(!silent.contains("[cluster]"), "{silent}");
+        assert_eq!(Publication::read(&silent).expect("reads").naming, None);
     }
 
     #[test]
